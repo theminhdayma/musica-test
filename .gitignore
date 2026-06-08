@@ -1,0 +1,17 @@
+node_modules
+dist
+.DS_Store
+*.local
+.vite
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Claude Code local state (keep launch.json + skills, ignore local task data)
+.claude/settings.local.json
+.claude/tasks

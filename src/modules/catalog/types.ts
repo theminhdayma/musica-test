@@ -6,6 +6,13 @@ export type ProductListItem = {
   title: string
   thumbnailUrl: string | null
   artistDisplayName: string
+  genre: string | null
+  genres: string[]
+  durationSeconds: number | null
+  useCases: string[]
+  createdAt: string
+  updatedAt: string
+  basePrice?: number
 }
 
 export type ProductsListResponse = {
@@ -24,6 +31,8 @@ export type ProductDetail = {
   thumbnailUrl: string | null
   artist: { id: string; displayName: string }
   availableRightsSummary?: unknown
+  digitalRightConfigId?: string | null
+  physicalRightConfigId?: string | null
 }
 
 export type SignedUrl = {

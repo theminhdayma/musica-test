@@ -1,86 +1,65 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { formatVND } from '../../../data/catalog'
 import type { ProductListItem } from '../../../modules/catalog/types'
 
 const props = defineProps<{
   item: ProductListItem
-  rawProduct?: any
 }>()
 
-// Derive card badge state from raw product data
 const badge = computed(() => {
-  if (!props.rawProduct) return null
-  const listens = props.rawProduct.listens || 0
-  const releaseDate = props.rawProduct.releaseDate ? new Date(props.rawProduct.releaseDate) : null
-  const now = new Date()
-  const diffDays = releaseDate ? (now.getTime() - releaseDate.getTime()) / (1000 * 60 * 60 * 24) : 999
-
-  if (listens > 400000) return { type: 'hot', label: 'HOT' }
-  if (diffDays < 90) return { type: 'new', label: 'MỚI' }
-  if (listens > 200000) return { type: 'trend', label: 'TRENDING' }
+  const createdAt = props.item.createdAt ? new Date(props.item.createdAt) : null
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return null
+  const diffDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+  if (diffDays <= 45) return { type: 'new', label: 'MỚI' }
   return null
 })
 
-const hasDiscount = computed(() => {
-  if (!props.rawProduct) return false
-  // Products with lofi category have a simulated 20% discount
-  return props.rawProduct.category === 'lofi'
+const durationLabel = computed(() => {
+  if (!props.item.durationSeconds || props.item.durationSeconds <= 0) return null
+  const minutes = Math.floor(props.item.durationSeconds / 60)
+  const seconds = props.item.durationSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 })
 
-const discountPercent = 20
+const useCaseLabel = computed(() => {
+  const [first] = props.item.useCases
+  if (!first) return null
 
-const price = computed(() => {
-  if (!props.rawProduct) return null
-  return props.rawProduct.basePrice || null
+  const labels: Record<string, string> = {
+    ADVERTISEMENT: 'Quảng cáo',
+    VLOG: 'Vlog',
+    SOCIAL: 'Mạng xã hội',
+    FILM: 'Phim',
+    GAME: 'Game',
+    PODCAST: 'Podcast',
+    EVENT: 'Sự kiện'
+  }
+
+  return labels[first] || first
 })
 
-const originalPrice = computed(() => {
-  if (!hasDiscount.value || !price.value) return null
-  return Math.round(price.value / (1 - discountPercent / 100))
+const updatedLabel = computed(() => {
+  const updatedAt = props.item.updatedAt ? new Date(props.item.updatedAt) : null
+  if (!updatedAt || Number.isNaN(updatedAt.getTime())) return null
+  return updatedAt.toLocaleDateString('vi-VN')
 })
 
-const formattedPrice = (val: number) =>
-  new Intl.NumberFormat('vi-VN').format(val) + ' ₫'
-
-const bpm = computed(() => props.rawProduct?.bpm || null)
-const duration = computed(() => props.rawProduct?.duration || null)
-const key = computed(() => props.rawProduct?.key || null)
-const rating = computed(() => props.rawProduct?.rating || null)
-const listens = computed(() => {
-  const n = props.rawProduct?.listens || 0
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000) return Math.round(n / 1000) + 'K'
-  return String(n)
-})
-const samplePeak = computed(() => props.rawProduct?.samplePeak || [])
 const coverStyle = computed(() => {
   const url = props.item.thumbnailUrl
   if (!url) return { background: 'var(--grad-brand)' }
-  if (url.startsWith('linear-gradient') || url.startsWith('radial-gradient')) {
-    return { background: url }
-  }
   return { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
 })
 </script>
 
 <template>
-  <RouterLink :to="`/product/${item.id}`" class="pcard" :class="[badge ? `pcard--${badge.type}` : '', hasDiscount ? 'pcard--sale' : '']">
+  <RouterLink :to="`/product/${item.id}`" class="pcard" :class="[badge ? `pcard--${badge.type}` : '']">
     <!-- Badge -->
     <div v-if="badge" class="pcard__badge" :class="`pcard__badge--${badge.type}`">{{ badge.label }}</div>
-    <div v-else-if="hasDiscount" class="pcard__badge pcard__badge--sale">-{{ discountPercent }}%</div>
 
     <!-- Cover / Thumbnail -->
     <div class="pcard__cover" :style="coverStyle">
-      <!-- Waveform overlay -->
-      <div v-if="samplePeak.length" class="pcard__wave">
-        <span
-          v-for="(h, i) in samplePeak.slice(0, 28)"
-          :key="i"
-          class="pcard__wave-bar"
-          :style="{ height: `${Math.min(100, (h / 60) * 100)}%` }"
-        />
-      </div>
       <!-- Play overlay -->
       <div class="pcard__play-overlay">
         <div class="pcard__play-btn">
@@ -101,32 +80,27 @@ const coverStyle = computed(() => {
       <div class="pcard__title" :title="item.title">{{ item.title }}</div>
       <div class="pcard__artist">{{ item.artistDisplayName }}</div>
 
-      <!-- Meta row: BPM, Duration, Key -->
+      <!-- Meta row -->
       <div class="pcard__meta">
-        <span v-if="duration" class="pcard__meta-item">
+        <span v-if="durationLabel" class="pcard__meta-item">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {{ duration }}
+          {{ durationLabel }}
         </span>
-        <span v-if="bpm" class="pcard__meta-item">{{ bpm }} BPM</span>
-        <span v-if="key" class="pcard__meta-item pcard__meta-item--key">{{ key }}</span>
+        <span v-if="item.genre" class="pcard__meta-item pcard__meta-item--key">{{ item.genre }}</span>
+        <span v-if="useCaseLabel" class="pcard__meta-item">{{ useCaseLabel }}</span>
       </div>
 
-      <!-- Rating + Listens -->
+      <!-- Update + Use cases -->
       <div class="pcard__stats">
-        <span v-if="rating" class="pcard__rating">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          {{ rating }}
-        </span>
-        <span v-if="listens" class="pcard__listens">{{ listens }} lượt nghe</span>
+        <span v-if="updatedLabel" class="pcard__listens">Cập nhật {{ updatedLabel }}</span>
+        <span v-if="item.useCases.length > 1" class="pcard__listens">{{ item.useCases.length }} mục đích sử dụng</span>
       </div>
 
-      <!-- Price footer -->
+      <!-- Footer -->
       <div class="pcard__footer">
         <div class="pcard__price-wrap">
-          <span v-if="originalPrice" class="pcard__price-original">{{ formattedPrice(originalPrice) }}</span>
-          <span v-if="price" class="pcard__price" :class="{ 'pcard__price--sale': hasDiscount }">
-            {{ formattedPrice(price) }}
-          </span>
+          <span class="pcard__price-caption">Giá từ</span>
+          <span class="pcard__price">{{ typeof item.basePrice === 'number' ? formatVND(item.basePrice) : 'Liên hệ' }}</span>
         </div>
         <div class="pcard__cta">
           Cấp phép
@@ -364,6 +338,10 @@ const coverStyle = computed(() => {
   margin-top: 10px;
 }
 .pcard__price-wrap { display: flex; flex-direction: column; }
+.pcard__price-caption {
+  font-size: 11px;
+  color: var(--c-text-mute);
+}
 .pcard__price-original {
   font-size: 11px;
   color: var(--c-text-mute);

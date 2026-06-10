@@ -1,116 +1,172 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import { getProduct, products, formatVND, defaultDeliverables } from '../data/catalog'
-import { toInternalProductId } from '../modules/catalog/idMap'
+import { getProduct, getExpressionConfigs, getModificationConfigs, calculateVariantPricing } from '../modules/catalog/api'
+import { toPublicProductId } from '../modules/catalog/idMap'
 import { useCartStore } from '../stores/cart'
 import ProductCard from '../components/product/ProductCard.vue'
 import WaveBars from '../components/ui/WaveBars.vue'
 import CheckList from '../components/ui/CheckList.vue'
+import UserIcon from '../components/icon/UserIcon.vue'
+import BuildingIcon from '../components/icon/BuildingIcon.vue'
+import CalendarIcon from '../components/icon/CalendarIcon.vue'
+import InfinityIcon from '../components/icon/InfinityIcon.vue'
+import MonitorIcon from '../components/icon/MonitorIcon.vue'
+import GlobeIcon from '../components/icon/GlobeIcon.vue'
+import VideoIcon from '../components/icon/VideoIcon.vue'
+import MegaphoneIcon from '../components/icon/MegaphoneIcon.vue'
+import DiscIcon from '../components/icon/DiscIcon.vue'
+import SlidersIcon from '../components/icon/SlidersIcon.vue'
+import MusicIcon from '../components/icon/MusicIcon.vue'
+import MicIcon from '../components/icon/MicIcon.vue'
+import WaveIcon from '../components/icon/WaveIcon.vue'
+
+const defaultDeliverables = [
+  'Bản thu âm chất lượng cao (WAV 24-bit/48kHz)',
+  'Beat chuẩn & Instrumental',
+  'Giấy chứng nhận bản quyền số (Digital Certificate)',
+  'Hợp đồng cấp phép định dạng PDF ký số'
+]
 
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
 
-const internalProductId = computed(() => toInternalProductId(String(route.params.id || '')))
-const product = computed(() => getProduct(internalProductId.value))
+const productId = computed(() => String(route.params.id || ''))
+const product = ref(null)
+const expressionConfigs = ref([])
+const modificationConfigs = ref([])
 
-const purpose = ref('youtube') // 'youtube' | 'performance'
+// Variant states
+const platformType = ref('DIGITAL') // 'DIGITAL' | 'PHYSICAL'
+const subjectType = ref(route.query.subject || 'INDIVIDUAL') // 'INDIVIDUAL' | 'ORGANIZATION'
+const durationKey = ref(route.query.duration || 'ONE_YEAR') // 'ONE_YEAR' | 'PERPETUAL'
+const scopeKey = ref(route.query.scope || 'SINGLE_CHANNEL') // 'SINGLE_CHANNEL' | 'MULTI_CHANNEL'
+const selectedExpressionId = ref(route.query.expr || '')
+const selectedModificationId = ref(route.query.mod || '')
 
-// Youtube variants
-const ytMonetize = ref(true)
-const ytDurationKey = ref('12')
-const ytScope = ref('global')
-
-// Performance variants
-const perfShows = ref(1)
-const perfScale = ref('medium')
-
-const ytDurations = [
-  { k: '6',  label: '6 tháng',  mult: 0.55 },
-  { k: '12', label: '12 tháng', mult: 1.00 },
-  { k: '24', label: '2 năm',    mult: 1.70 },
-  { k: '36', label: '3 năm',    mult: 2.30 }
-]
-
-const perfScales = [
-  { k: 'small',  label: 'Dưới 200 khách',     mult: 1.0,  desc: 'Sự kiện nội bộ, club, lounge' },
-  { k: 'medium', label: '200 — 1.000 khách',   mult: 1.8,  desc: 'Hội thảo, gala, fanmeeting' },
-  { k: 'large',  label: '1.000 — 5.000 khách', mult: 3.2,  desc: 'Concert vừa, music night' },
-  { k: 'arena',  label: 'Trên 5.000 khách',    mult: 5.5,  desc: 'Festival, arena, đại nhạc hội' }
-]
-
+const audioElement = ref(null)
 const isPlaying = ref(false)
 const progress = ref(0)
-let raf
+
 function togglePlay() {
-  isPlaying.value = !isPlaying.value
-  if (isPlaying.value) loopProgress()
-  else cancelAnimationFrame(raf)
-}
-function loopProgress() {
-  progress.value = (progress.value + 0.3) % 100
-  raf = requestAnimationFrame(loopProgress)
-}
-
-const peaks = computed(() => (product.value?.samplePeak || []).map(v => v / 60))
-
-// Price calculation
-const calc = computed(() => {
-  if (!product.value) return null
-  const base = product.value.basePrice
-  if (purpose.value === 'youtube') {
-    const d = ytDurations.find(x => x.k === ytDurationKey.value)
-    const monetizeMult = ytMonetize.value ? 1.5 : 1.0
-    const scopeMult = ytScope.value === 'global' ? 1.0 : 0.7
-    const total = Math.round(base * d.mult * monetizeMult * scopeMult)
-    return {
-      total,
-      breakdown: [
-        { label: 'Giá cơ bản tác quyền', value: base },
-        { label: `Thời hạn — ${d.label}`, mult: d.mult },
-        { label: `Bật kiếm tiền — ${ytMonetize.value ? 'Có' : 'Không'}`, mult: monetizeMult },
-        { label: `Phạm vi — ${ytScope.value === 'global' ? 'Toàn cầu' : 'Việt Nam'}`, mult: scopeMult }
-      ],
-      summary: {
-        'Mục đích': 'Phát hành YouTube',
-        'Thời hạn': d.label,
-        'Bật kiếm tiền': ytMonetize.value ? 'Có' : 'Không',
-        'Phạm vi': ytScope.value === 'global' ? 'Toàn cầu' : 'Việt Nam'
-      }
-    }
+  const url = product.value?.previewAudioUrl || product.value?.audioUrl
+  if (!url) {
+    alert("Bản nghe thử không có sẵn cho tác phẩm này.")
+    return
   }
-  const s = perfScales.find(x => x.k === perfScale.value)
-  const total = Math.round(base * s.mult * (1 + (perfShows.value - 1) * 0.6))
-  return {
-    total,
-    breakdown: [
-      { label: 'Giá cơ bản tác quyền', value: base },
-      { label: `Quy mô — ${s.label}`, mult: s.mult },
-      { label: `Số buổi — ${perfShows.value} buổi`, mult: 1 + (perfShows.value - 1) * 0.6 }
-    ],
-    summary: {
-      'Mục đích': 'Biểu diễn trực tiếp',
-      'Quy mô': s.label,
-      'Số buổi': `${perfShows.value} buổi`
-    }
+
+  if (!audioElement.value) {
+    audioElement.value = new Audio(url)
+    audioElement.value.addEventListener('timeupdate', () => {
+      const duration = audioElement.value.duration
+      if (duration && !isNaN(duration) && isFinite(duration)) {
+        progress.value = (audioElement.value.currentTime / duration) * 100
+      }
+    })
+    audioElement.value.addEventListener('ended', () => {
+      isPlaying.value = false
+      progress.value = 0
+    })
+   
+  }
+
+  if (isPlaying.value) {
+    audioElement.value.pause()
+    isPlaying.value = false
+  } else {
+    audioElement.value.play().then(() => {
+      isPlaying.value = true
+    }).catch(err => {
+      console.error('Playback failed:', err)
+      alert("Không thể phát nhạc: " + err.message)
+      isPlaying.value = false
+    })
+  }
+}
+
+onUnmounted(() => {
+  if (audioElement.value) {
+    audioElement.value.pause()
+    audioElement.value.src = ''
+    audioElement.value = null
   }
 })
 
-const related = computed(() =>
-  products.filter(p => p.id !== product.value?.id && p.category === product.value?.category).slice(0, 4)
-)
+const peaks = computed(() => (product.value?.samplePeak || []).map(v => v / 60))
+
+// Price calculation from API
+const calcData = ref(null)
+const isCalculating = ref(false)
+
+async function fetchCalculation() {
+  if (!product.value) return
+  if (platformType.value === 'DIGITAL' && !product.value.digitalRightConfigId) {
+    calcData.value = null
+    return
+  }
+  if (platformType.value === 'PHYSICAL' && !product.value.physicalRightConfigId) {
+    calcData.value = null
+    return
+  }
+
+  isCalculating.value = true
+  try {
+    const payload = {
+      platformType: platformType.value,
+      digitalRightConfigId: product.value.digitalRightConfigId,
+      physicalRightConfigId: product.value.physicalRightConfigId,
+      subject: subjectType.value,
+      duration: durationKey.value,
+      scope: scopeKey.value,
+      expressionConfigId: selectedExpressionId.value || undefined,
+      modificationConfigId: selectedModificationId.value || undefined
+    }
+    const res = await calculateVariantPricing(payload)
+    calcData.value = {
+      total: res.totalPrice,
+      breakdown: res.breakdown.map(b => ({ label: b.label, value: null, isLine: true })), // the API doesn't return value per line but we show it
+      summary: {
+        'Nền tảng': platformType.value === 'DIGITAL' ? 'Kỹ thuật số' : 'Vật lý / Biểu diễn',
+        'Đối tượng': subjectType.value === 'INDIVIDUAL' ? 'Cá nhân' : 'Tổ chức',
+        'Thời hạn': durationKey.value === 'ONE_YEAR' ? '1 Năm' : 'Vĩnh viễn',
+        'Phạm vi': scopeKey.value === 'SINGLE_CHANNEL' ? '1 Kênh' : 'Đa Kênh'
+      }
+    }
+  } catch (err) {
+    console.error('Pricing calculate error', err)
+    calcData.value = null
+  } finally {
+    isCalculating.value = false
+  }
+}
+
+watch([platformType, subjectType, durationKey, scopeKey, selectedExpressionId, selectedModificationId], () => {
+  router.replace({
+    query: {
+      ...route.query,
+      subject: subjectType.value,
+      duration: durationKey.value,
+      scope: scopeKey.value,
+      expr: selectedExpressionId.value || undefined,
+      mod: selectedModificationId.value || undefined
+    }
+  })
+  fetchCalculation()
+})
+
+const related = ref([])
 
 const addedFlash = ref(false)
 function addToCart() {
-  if (!product.value || !calc.value) return
+  if (!product.value || !calcData.value) return
   cart.add({
     productId: product.value.id,
     title: product.value.title,
     artist: product.value.artist,
-    cover: product.value.cover,
-    price: calc.value.total,
-    configuration: calc.value.summary
+    cover: product.value.thumbnailUrl,
+    price: calcData.value.total,
+    configuration: calcData.value.summary
   })
   addedFlash.value = true
   setTimeout(() => addedFlash.value = false, 1400)
@@ -121,22 +177,82 @@ function buyNow() {
   setTimeout(() => router.push('/cart'), 200)
 }
 
+async function loadData() {
+  try {
+    const pRes = await getProduct(productId.value)
+    product.value = pRes.data
+
+    const [expRes, modRes] = await Promise.all([
+      getExpressionConfigs(),
+      getModificationConfigs()
+    ])
+    expressionConfigs.value = (expRes.items || []).filter(item => item.status === 'ACTIVE')
+    modificationConfigs.value = (modRes.items || []).filter(item => item.status === 'ACTIVE')
+
+    if (expressionConfigs.value.length > 0 && !selectedExpressionId.value) {
+      selectedExpressionId.value = expressionConfigs.value[0].id
+    }
+    if (modificationConfigs.value.length > 0 && !selectedModificationId.value) {
+      selectedModificationId.value = modificationConfigs.value[0].id
+    }
+    
+    fetchCalculation()
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+onMounted(() => {
+  if (route.query.subject) subjectType.value = route.query.subject
+  if (route.query.duration) durationKey.value = route.query.duration
+  if (route.query.scope) scopeKey.value = route.query.scope
+  if (route.query.expr) selectedExpressionId.value = route.query.expr
+  if (route.query.mod) selectedModificationId.value = route.query.mod
+
+  loadData()
+})
+
 watch(() => route.params.id, () => {
-  purpose.value = 'youtube'
-  ytMonetize.value = true
-  ytDurationKey.value = '12'
-  perfShows.value = 1
-  perfScale.value = 'medium'
+  platformType.value = 'DIGITAL'
+  subjectType.value = 'INDIVIDUAL'
+  durationKey.value = 'ONE_YEAR'
+  scopeKey.value = 'SINGLE_CHANNEL'
+  loadData()
 })
 
 function formatDate(s) {
+  if (!s) return ''
   return new Date(s).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
-function formatTime(pct, duration) {
-  const [m, s] = duration.split(':').map(Number)
-  const total = m * 60 + s
-  const cur = Math.floor(total * pct / 100)
+function formatTime(pct, durationSecs) {
+  if (!durationSecs || typeof durationSecs !== 'number' || isNaN(pct) || isNaN(durationSecs)) return '0:00'
+  const cur = Math.floor(durationSecs * pct / 100)
+  if (isNaN(cur)) return '0:00'
   return `${Math.floor(cur / 60)}:${String(cur % 60).padStart(2, '0')}`
+}
+function formatDuration(secs) {
+  if (!secs) return '0:00'
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
+}
+function formatVND(amount) {
+  if (!amount) return '0 đ'
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)
+}
+
+const getIconForExpression = (name) => {
+  const lower = name.toLowerCase()
+  if (lower.includes('ca sĩ') || lower.includes('vocal')) return MicIcon
+  if (lower.includes('không lời') || lower.includes('instrumental')) return WaveIcon
+  if (lower.includes('vlog')) return VideoIcon
+  if (lower.includes('quảng cáo') || lower.includes('quang cao') || lower.includes('ads')) return MegaphoneIcon
+  return WaveIcon
+}
+
+const getIconForModification = (name) => {
+  const lower = name.toLowerCase()
+  if (lower.includes('nguyên bản') || lower.includes('nguyen ban')) return DiscIcon
+  if (lower.includes('phối khí') || lower.includes('phoi khi')) return SlidersIcon
+  return MusicIcon
 }
 </script>
 
@@ -147,23 +263,20 @@ function formatTime(pct, duration) {
   </div>
 
   <div v-else class="product-page">
-    <!-- Breadcrumb -->
     <div class="container crumbs">
       <RouterLink to="/">Trang chủ</RouterLink>
       <span>›</span>
-      <RouterLink to="/" class="muted">{{ product.category.toUpperCase() }}</RouterLink>
+      <RouterLink to="/" class="muted">{{ (product.genre || 'Khác').toUpperCase() }}</RouterLink>
       <span>›</span>
       <span class="muted">{{ product.title }}</span>
     </div>
 
     <section class="hero-product">
       <div class="container product-grid">
-        <!-- Left column -->
         <div class="left">
-          <!-- Compact player card -->
           <div class="player-card">
             <div class="player-row">
-              <div class="art" :style="{ background: product.cover }" aria-hidden="true">
+              <div class="art" :style="{ backgroundImage: product.thumbnailUrl ? `url(${product.thumbnailUrl})` : 'none', backgroundColor: '#e5e7eb', backgroundSize: 'cover' }" aria-hidden="true">
                 <button class="play" @click="togglePlay" :aria-label="isPlaying ? 'Tạm dừng' : 'Phát'">
                   <svg v-if="!isPlaying" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                   <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
@@ -171,34 +284,33 @@ function formatTime(pct, duration) {
               </div>
               <div class="meta-block">
                 <div class="title-row">
-                  <span class="badge-cat">{{ product.category.toUpperCase() }}</span>
-                  <span class="isrc">ISRC · {{ product.isrc }}</span>
+                  <span class="badge-cat">{{ (product.genre || 'POP').toUpperCase() }}</span>
+                  <span class="isrc">Mã số · {{ product.productCode || product.id.slice(0, 8).toUpperCase() }}</span>
                 </div>
                 <h1>{{ product.title }}</h1>
-                <p class="byline">{{ product.artist }} · {{ product.publisher }}</p>
-                <div class="wave-line">
-                  <WaveBars :peaks="peaks" size="sm" variant="muted" :progress="progress" />
-                  <span class="time">{{ formatTime(progress, product.duration) }} <em>/ {{ product.duration }}</em></span>
+                <p class="byline">{{ product.authorName || 'Nghệ sĩ' }}</p>
+                <div class="wave-line flex-1">
+                  <WaveBars :peaks="peaks" :bars="80" size="md" variant="muted" :progress="progress" />
+                  <span class="time">{{ formatTime(progress, product.duration) }} <em>/ {{ formatDuration(product.duration) }}</em></span>
                 </div>
               </div>
             </div>
             <div class="meta-row">
-              <div><span>BPM</span><b>{{ product.bpm }}</b></div>
-              <div><span>Tông</span><b>{{ product.key }}</b></div>
-              <div><span>Phát hành</span><b>{{ formatDate(product.releaseDate) }}</b></div>
-              <div><span>Mood</span><b>{{ product.mood }}</b></div>
+              <div><span>Nền tảng</span><b>{{ product.digitalRightConfigId ? 'Kỹ thuật số' : 'Vật lý' }}</b></div>
+              <div><span>Thể loại</span><b>{{ product.genre || 'Khác' }}</b></div>
+              <div><span>Phát hành</span><b>{{ formatDate(product.createdAt) }}</b></div>
+              <div><span>Thời lượng</span><b>{{ Math.floor((product.duration || 0) / 60) }}:{{ String((product.duration || 0) % 60).padStart(2, '0') }}</b></div>
             </div>
           </div>
 
           <div class="info-block">
             <h3>Về tác phẩm</h3>
             <p>{{ product.description }}</p>
-            <div class="tags">
-              <span v-for="t in product.tags" :key="t" class="tag">{{ t }}</span>
+            <div class="tags" v-if="product.useCases && product.useCases.length">
+              <span v-for="t in product.useCases" :key="t" class="tag">{{ t }}</span>
             </div>
           </div>
 
-          <!-- Contents included -->
           <div class="info-block">
             <h3>Nội dung tác quyền bao gồm</h3>
             <p class="muted">Khi mua tác quyền, nghệ sĩ sẽ bàn giao đầy đủ các tài sản số sau đây kèm hợp đồng:</p>
@@ -208,16 +320,14 @@ function formatTime(pct, duration) {
           <div class="info-block">
             <h3>Quyền sở hữu & xác minh</h3>
             <ul class="ownership">
-              <li><span>Chủ sở hữu</span><b>{{ product.publisher }}</b></li>
-              <li><span>Mã ISRC</span><b>{{ product.isrc }}</b></li>
-              <li><span>Tác giả</span><b>{{ product.artist }}</b></li>
-              <li><span>Ngày đăng ký bản quyền</span><b>{{ formatDate(product.releaseDate) }}</b></li>
-              <li><span>Trạng thái xác minh</span><b class="ok">✓ Đã xác minh trên MusicA</b></li>
+              <li><span>Mã ID</span><b>{{ product.id }}</b></li>
+              <li><span>Tác giả</span><b>{{ product.authorName || 'Nghệ sĩ' }}</b></li>
+              <li><span>Ngày đăng ký</span><b>{{ formatDate(product.createdAt) }}</b></li>
+              <li><span>Trạng thái</span><b class="ok">✓ Đã xác minh trên MusicA</b></li>
             </ul>
           </div>
         </div>
 
-        <!-- Right: variant configurator -->
         <aside class="right">
           <div class="config-card">
             <div class="config-head">
@@ -225,98 +335,71 @@ function formatTime(pct, duration) {
               <h2>Tuỳ chọn gói mua</h2>
             </div>
 
-            <div class="field">
-              <label class="field-label">1. Mục đích sử dụng</label>
-              <div class="purpose-grid">
-                <button :class="['ptile', { active: purpose === 'youtube' }]" @click="purpose = 'youtube'">
-                  <div class="picon yt">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M23 7.5a4 4 0 0 0-2.8-2.8C18.3 4.2 12 4.2 12 4.2s-6.3 0-8.2.5A4 4 0 0 0 1 7.5 41.6 41.6 0 0 0 .5 12a41.6 41.6 0 0 0 .5 4.5 4 4 0 0 0 2.8 2.8c1.9.5 8.2.5 8.2.5s6.3 0 8.2-.5A4 4 0 0 0 23 16.5 41.6 41.6 0 0 0 23.5 12a41.6 41.6 0 0 0-.5-4.5zM9.8 15.5v-7l6 3.5z" /></svg>
-                  </div>
-                  <strong>Phát hành YouTube</strong>
-                  <span>MV, vlog, short-form</span>
-                </button>
-                <button :class="['ptile', { active: purpose === 'performance' }]" @click="purpose = 'performance'">
-                  <div class="picon perf">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22" /><path d="M19 5v14" /><path d="M5 5v14" /><circle cx="12" cy="12" r="3" /></svg>
-                  </div>
-                  <strong>Biểu diễn trực tiếp</strong>
-                  <span>Concert, sự kiện, gala</span>
-                </button>
+            <div class="field-group">
+              <div class="field">
+                <label class="field-label">1. Đối tượng</label>
+                <div class="big-cards">
+                  <button :class="['big-card', { active: subjectType === 'INDIVIDUAL' }]" @click="subjectType = 'INDIVIDUAL'"><UserIcon width="24" height="24" class="icon" /> <span>Cá nhân</span></button>
+                  <button :class="['big-card', { active: subjectType === 'ORGANIZATION' }]" @click="subjectType = 'ORGANIZATION'"><BuildingIcon width="24" height="24" class="icon" /> <span>Tổ chức</span></button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field-label">2. Thời hạn</label>
+                <div class="seg">
+                  <button :class="['seg-btn', { active: durationKey === 'ONE_YEAR' }]" @click="durationKey = 'ONE_YEAR'"><CalendarIcon width="16" height="16" class="icon" /> 1 Năm</button>
+                  <button :class="['seg-btn', { active: durationKey === 'PERPETUAL' }]" @click="durationKey = 'PERPETUAL'"><InfinityIcon width="16" height="16" class="icon" /> Vĩnh viễn</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field-label">3. Phạm vi phân phối</label>
+                <div class="seg">
+                  <button :class="['seg-btn', { active: scopeKey === 'SINGLE_CHANNEL' }]" @click="scopeKey = 'SINGLE_CHANNEL'"><MonitorIcon width="16" height="16" class="icon" /> 1 Kênh</button>
+                  <button :class="['seg-btn', { active: scopeKey === 'MULTI_CHANNEL' }]" @click="scopeKey = 'MULTI_CHANNEL'"><GlobeIcon width="16" height="16" class="icon" /> Đa Kênh</button>
+                </div>
+              </div>
+
+              <div class="field" v-if="expressionConfigs.length > 0">
+                <label class="field-label">4. Hình thức</label>
+                <div class="big-cards">
+                  <button v-for="c in expressionConfigs" :key="c.id"
+                          :class="['big-card', { active: selectedExpressionId === c.id }]"
+                          @click="selectedExpressionId = c.id">
+                    <component :is="getIconForExpression(c.name)" width="24" height="24" class="icon" />
+                    <span>{{ c.name }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="field" v-if="modificationConfigs.length > 0">
+                <label class="field-label">5. Mức độ sử dụng (Bản quyền phái sinh)</label>
+                <div class="seg">
+                  <button v-for="c in modificationConfigs" :key="c.id"
+                          :class="['seg-btn', { active: selectedModificationId === c.id }]"
+                          @click="selectedModificationId = c.id">
+                    {{ c.name }}
+                  </button>
+                </div>
               </div>
             </div>
 
-            <transition name="swap" mode="out-in">
-              <div v-if="purpose === 'youtube'" key="yt" class="field-group">
-                <div class="field">
-                  <label class="field-label">2. Bật kiếm tiền</label>
-                  <div class="toggle-row">
-                    <button :class="['toggle', { active: ytMonetize }]" @click="ytMonetize = !ytMonetize" :aria-pressed="ytMonetize">
-                      <span class="dot"></span>
-                    </button>
-                    <div class="toggle-text">
-                      <strong>{{ ytMonetize ? 'Có bật kiếm tiền' : 'Không bật kiếm tiền' }}</strong>
-                      <span>{{ ytMonetize ? 'Cho phép YouTube monetize nội dung.' : 'Chỉ dùng phi thương mại, giá thấp hơn.' }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label class="field-label">3. Thời hạn</label>
-                  <div class="seg">
-                    <button v-for="d in ytDurations" :key="d.k"
-                            :class="['seg-btn', { active: ytDurationKey === d.k }]"
-                            @click="ytDurationKey = d.k">{{ d.label }}</button>
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label class="field-label">4. Phạm vi địa lý</label>
-                  <div class="seg">
-                    <button :class="['seg-btn', { active: ytScope === 'global' }]" @click="ytScope = 'global'">🌐 Toàn cầu</button>
-                    <button :class="['seg-btn', { active: ytScope === 'vn' }]" @click="ytScope = 'vn'">🇻🇳 Việt Nam</button>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else key="perf" class="field-group">
-                <div class="field">
-                  <label class="field-label">2. Quy mô sự kiện</label>
-                  <div class="scale-list">
-                    <button v-for="s in perfScales" :key="s.k"
-                            :class="['scale-row', { active: perfScale === s.k }]"
-                            @click="perfScale = s.k">
-                      <div class="scale-radio"></div>
-                      <div class="scale-body">
-                        <strong>{{ s.label }}</strong>
-                        <span>{{ s.desc }}</span>
-                      </div>
-                      <span class="scale-mult">×{{ s.mult.toFixed(1) }}</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label class="field-label">3. Số buổi biểu diễn</label>
-                  <div class="counter">
-                    <button @click="perfShows = Math.max(1, perfShows - 1)" aria-label="Giảm">−</button>
-                    <div class="counter-val">{{ perfShows }} <small>buổi</small></div>
-                    <button @click="perfShows = Math.min(30, perfShows + 1)" aria-label="Tăng">+</button>
-                  </div>
-                </div>
-              </div>
-            </transition>
-
-            <div class="price-summary">
-              <div class="ps-rows">
-                <div v-for="(r, i) in calc.breakdown" :key="i" class="ps-row">
+            <div class="price-summary" :style="{ opacity: isCalculating ? 0.6 : 1 }">
+              <div v-if="calcData" class="ps-rows">
+                <div v-for="(r, i) in calcData.breakdown" :key="i" class="ps-row">
                   <span>{{ r.label }}</span>
-                  <span v-if="r.value">{{ formatVND(r.value) }}</span>
-                  <span v-else class="mult">× {{ r.mult.toFixed(2) }}</span>
+                  <span class="ok">✓ Đã bao gồm</span>
                 </div>
               </div>
+              <div v-else class="ps-rows">
+                <div class="ps-row"><span>Đang tải thông tin giá...</span></div>
+              </div>
+              
               <div class="ps-total">
                 <span>Tạm tính</span>
-                <transition name="price"><strong :key="calc.total" class="gradient-text">{{ formatVND(calc.total) }}</strong></transition>
+                <transition name="price">
+                  <strong v-if="calcData" :key="calcData.total" class="gradient-text">{{ formatVND(calcData.total) }}</strong>
+                </transition>
               </div>
               <small class="muted">Chưa gồm phí xử lý 4% & VAT. Hợp đồng số phát hành ngay sau thanh toán.</small>
             </div>
@@ -443,9 +526,11 @@ function formatTime(pct, duration) {
 .wave-line {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
+  gap: 12px;
+  margin-top: 10px;
+  width: 100%;
 }
+.wave-line .wb { flex: 1; }
 .time {
   font-size: 11.5px;
   color: var(--c-text-soft);
@@ -598,6 +683,10 @@ function formatTime(pct, duration) {
 }
 .seg-btn {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 12px;
   background: transparent;
   border: none;
@@ -614,6 +703,35 @@ function formatTime(pct, duration) {
   color: var(--c-blue-700);
   box-shadow: var(--shadow-xs);
 }
+
+.big-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.big-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.big-card:hover { border-color: var(--c-teal-300); }
+.big-card.active {
+  border-color: var(--c-teal-500);
+  color: var(--c-teal-700);
+  background: linear-gradient(180deg, #f0fdfa, #ffffff);
+}
+.big-card .icon { color: var(--c-text-mute); transition: color 0.2s; }
+.big-card.active .icon { color: var(--c-teal-600); }
 
 .scale-list { display: flex; flex-direction: column; gap: 6px; }
 .scale-row {

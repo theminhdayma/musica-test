@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
-import { artists, products as rawProducts } from '../../data/catalog'
+import { artists } from '../../data/catalog'
 import { listProducts } from '../../modules/catalog/api'
 import type { ProductListItem } from '../../modules/catalog/types'
 import { ApiError } from '../../shared/api/errors'
@@ -56,27 +56,18 @@ const resource = useAsyncResource(async () => {
 
 const allItems = computed<ProductListItem[]>(() => resource.data.value?.data.items || [])
 
-const rawByCode = computed<Record<string, any>>(() => {
+const itemsByCode = computed<Record<string, ProductListItem>>(() => {
   const m: Record<string, any> = {}
-  for (const p of rawProducts as any[]) {
-    const code = p.isrc ? String(p.isrc) : `PROD-${String(p.id).slice(0, 6).padStart(6, '0')}`
-    m[code] = p
+  for (const item of allItems.value) {
+    m[item.productCode] = item
   }
   return m
 })
 
-function parseDurationSeconds(v: string) {
-  const parts = v.split(':').map(Number)
-  if (parts.length !== 2 || parts.some(n => Number.isNaN(n))) return null
-  return parts[0] * 60 + parts[1]
-}
-
 function getDurationLabel(productCode: string) {
-  const p = rawByCode.value[productCode]
-  const dur = p?.duration
-  if (!dur) return '--:--'
-  const s = parseDurationSeconds(String(dur))
-  if (!s) return String(dur)
+  const durationSeconds = itemsByCode.value[productCode]?.durationSeconds
+  if (!durationSeconds || durationSeconds <= 0) return '--:--'
+  const s = durationSeconds
   const mm = Math.floor(s / 60)
   const ss = s % 60
   return `${mm}:${String(ss).padStart(2, '0')}`
@@ -84,10 +75,9 @@ function getDurationLabel(productCode: string) {
 
 function withinTime(productCode: string, key: TimeKey) {
   if (key === 'any') return true
-  const p = rawByCode.value[productCode]
-  const releaseDate = p?.releaseDate
-  if (!releaseDate) return true
-  const d = new Date(releaseDate).getTime()
+  const createdAt = itemsByCode.value[productCode]?.createdAt
+  if (!createdAt) return true
+  const d = new Date(createdAt).getTime()
   if (!Number.isFinite(d)) return true
   const now = Date.now()
   const diff = now - d
@@ -105,11 +95,8 @@ function withinTime(productCode: string, key: TimeKey) {
 
 function withinLength(productCode: string, key: LengthKey) {
   if (key === 'any') return true
-  const p = rawByCode.value[productCode]
-  const dur = p?.duration
-  if (!dur) return true
-  const s = parseDurationSeconds(String(dur))
-  if (!s) return true
+  const s = itemsByCode.value[productCode]?.durationSeconds
+  if (!s || s <= 0) return true
   if (key === 'lt2') return s < 120
   if (key === '2to4') return s >= 120 && s < 240
   if (key === '4to6') return s >= 240 && s < 360
@@ -118,11 +105,10 @@ function withinLength(productCode: string, key: LengthKey) {
 
 function withinPurpose(productCode: string, key: PurposeKey) {
   if (key === 'any') return true
-  const p = rawByCode.value[productCode]
-  const purposes = Array.isArray(p?.availablePurposes) ? p.availablePurposes : null
-  if (!purposes) return true
-  if (key === 'youtube') return purposes.includes('YOUTUBE')
-  return purposes.includes('PERFORMANCE')
+  const purposes = itemsByCode.value[productCode]?.useCases || []
+  if (!purposes.length) return true
+  if (key === 'youtube') return purposes.some(value => ['SOCIAL', 'VLOG', 'ADVERTISEMENT'].includes(value))
+  return purposes.some(value => ['EVENT', 'FILM'].includes(value))
 }
 
 const filtered = computed(() => {

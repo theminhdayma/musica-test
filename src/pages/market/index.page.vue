@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
-import { categories, products as rawProducts, moods } from '../../data/catalog'
 import { listProducts } from '../../modules/catalog/api'
 import type { ProductListItem } from '../../modules/catalog/types'
 import { useAsyncResource } from '../../shared/lib/useAsyncResource'
@@ -21,183 +20,252 @@ useHead({
   ]
 })
 
-const router = useRouter()
 const route = useRoute()
 
-// ─── Local filter state ───
-const searchQ = ref('')
-const selectedGenre = ref('all')
-const selectedMood = ref('all')
-const selectedSort = ref('popular')
-const priceMin = ref<number | null>(null)
-const priceMax = ref<number | null>(null)
-const selectedDuration = ref('all')
-const selectedPurpose = ref('all')
+type DurationFilter = 'all' | 'lt2' | '2to4' | 'gt4'
+type SortFilter =
+  | 'createdAt:desc'
+  | 'createdAt:asc'
+  | 'updatedAt:desc'
+  | 'updatedAt:asc'
+  | 'title:asc'
+  | 'title:desc'
+  | 'genre:asc'
+  | 'genre:desc'
+  | 'duration:asc'
+  | 'duration:desc'
+
+const DEFAULT_PAGE_SIZE = 40
+const DEFAULT_SORT: SortFilter = 'createdAt:desc'
+const FACET_PAGE_SIZE = 100
+
+const KNOWN_USE_CASES = [
+  { id: 'ADVERTISEMENT', label: 'Quảng cáo' },
+  { id: 'VLOG', label: 'Vlog' },
+  { id: 'SOCIAL', label: 'Mạng xã hội' },
+  { id: 'FILM', label: 'Phim' },
+  { id: 'GAME', label: 'Game' },
+  { id: 'PODCAST', label: 'Podcast' },
+  { id: 'EVENT', label: 'Sự kiện' }
+] as const
+
+const initialQuery = route.query
+const searchQ = ref(typeof initialQuery.q === 'string' ? initialQuery.q : '')
+const selectedGenre = ref(typeof initialQuery.genre === 'string' ? initialQuery.genre : 'all')
+const selectedSort = ref<SortFilter>(typeof initialQuery.sort === 'string' ? initialQuery.sort as SortFilter : DEFAULT_SORT)
+const selectedDuration = ref<DurationFilter>(typeof initialQuery.duration === 'string' ? initialQuery.duration as DurationFilter : 'all')
+const selectedUseCase = ref(typeof initialQuery.useCase === 'string' ? initialQuery.useCase : 'all')
+const currentPage = ref(readNumberParam(initialQuery.page, 1))
 const filtersExpanded = ref({
   genre: true,
-  price: true,
   duration: true,
-  mood: true,
   purpose: true
 })
 
-// ─── Sync with URL ───
 function readNumberParam(v: unknown, fallback: number) {
   const n = Number(v)
   if (!Number.isFinite(n) || n <= 0) return fallback
   return Math.floor(n)
 }
 
-const queryState = computed(() => {
-  const q = typeof route.query.q === 'string' ? route.query.q : ''
-  const genre = typeof route.query.genre === 'string' ? route.query.genre : ''
-  const page = readNumberParam(route.query.page, 1)
-  const pageSize = readNumberParam(route.query.pageSize, 40)
-  return { q, genre, page, pageSize }
+const requestState = computed(() => {
+  return {
+    q: searchQ.value.trim(),
+    genre: selectedGenre.value,
+    useCase: selectedUseCase.value,
+    duration: selectedDuration.value,
+    sort: selectedSort.value,
+    page: currentPage.value,
+    pageSize: DEFAULT_PAGE_SIZE,
+  }
 })
 
 const resource = useAsyncResource(async () => {
-  const { q, genre, page, pageSize } = queryState.value
+  const { q, genre, useCase, duration, sort, page, pageSize } = requestState.value
   return await listProducts({
     q: q.trim() || undefined,
-    genre: genre && genre !== 'all' ? genre : undefined,
+    genre: genre !== 'all' ? genre : undefined,
+    useCase: useCase !== 'all' ? useCase : undefined,
+    duration: duration !== 'all' ? duration : undefined,
+    sort,
     page,
     pageSize
   })
 })
 
-const items = computed<ProductListItem[]>(() => resource.data.value?.data.items || [])
-const pagination = computed(() => resource.data.value?.meta?.pagination || null)
-const errorRequestId = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.requestId : null))
-const errorMessage = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.message : resource.error.value instanceof Error ? resource.error.value.message : 'Không thể tải dữ liệu'))
-
-// ─── Client-side filtering + sorting ───
-const filteredItems = computed(() => {
-  let result = items.value.slice()
-
-  // Search in local
-  if (searchQ.value.trim()) {
-    const q = searchQ.value.trim().toLowerCase()
-    result = result.filter(it =>
-      it.title.toLowerCase().includes(q) ||
-      it.artistDisplayName.toLowerCase().includes(q)
-    )
-  }
-
-  // Mood filter (local)
-  if (selectedMood.value !== 'all') {
-    result = result.filter(it => {
-      const raw = getRaw(it)
-      return raw?.mood === selectedMood.value
-    })
-  }
-
-  // Duration filter
-  if (selectedDuration.value !== 'all') {
-    result = result.filter(it => {
-      const raw = getRaw(it)
-      if (!raw?.duration) return true
-      const parts = String(raw.duration).split(':').map(Number)
-      const secs = parts.length === 2 ? parts[0] * 60 + parts[1] : 0
-      if (selectedDuration.value === 'lt2') return secs < 120
-      if (selectedDuration.value === '2to4') return secs >= 120 && secs < 240
-      if (selectedDuration.value === 'gt4') return secs >= 240
-      return true
-    })
-  }
-
-  // Price filter
-  if (priceMin.value !== null || priceMax.value !== null) {
-    result = result.filter(it => {
-      const raw = getRaw(it)
-      const p = raw?.basePrice || 0
-      const mn = priceMin.value ?? 0
-      const mx = priceMax.value ?? Infinity
-      return p >= mn && p <= mx
-    })
-  }
-
-  // Purpose filter
-  if (selectedPurpose.value !== 'all') {
-    result = result.filter(it => {
-      const raw = getRaw(it)
-      return Array.isArray(raw?.availablePurposes) && raw.availablePurposes.includes(selectedPurpose.value)
-    })
-  }
-
-  // Sort
-  if (selectedSort.value === 'popular') {
-    result = [...result].sort((a, b) => (getRaw(b)?.listens || 0) - (getRaw(a)?.listens || 0))
-  } else if (selectedSort.value === 'rating') {
-    result = [...result].sort((a, b) => (getRaw(b)?.rating || 0) - (getRaw(a)?.rating || 0))
-  } else if (selectedSort.value === 'price_asc') {
-    result = [...result].sort((a, b) => (getRaw(a)?.basePrice || 0) - (getRaw(b)?.basePrice || 0))
-  } else if (selectedSort.value === 'price_desc') {
-    result = [...result].sort((a, b) => (getRaw(b)?.basePrice || 0) - (getRaw(a)?.basePrice || 0))
-  } else if (selectedSort.value === 'newest') {
-    result = [...result].sort((a, b) => {
-      const da = new Date(getRaw(a)?.releaseDate || 0).getTime()
-      const db = new Date(getRaw(b)?.releaseDate || 0).getTime()
-      return db - da
-    })
-  }
-
-  return result
+const facetResource = useAsyncResource(async () => {
+  return await listProducts({
+    page: 1,
+    pageSize: FACET_PAGE_SIZE,
+    sort: 'title:asc'
+  })
 })
 
-function getRaw(it: ProductListItem) {
-  return (rawProducts as any[]).find(r =>
-    r.isrc === it.productCode ||
-    `PROD-${String(r.id).slice(0, 6).padStart(6, '0')}` === it.productCode
-  ) || null
+const items = computed<ProductListItem[]>(() => resource.data.value?.data.items || [])
+const pagination = computed(() => resource.data.value?.meta?.pagination || null)
+const facetItems = computed<ProductListItem[]>(() => facetResource.data.value?.data.items || [])
+const errorRequestId = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.requestId : null))
+const errorMessage = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.message : resource.error.value instanceof Error ? resource.error.value.message : 'Không thể tải dữ liệu'))
+const lastRenderedItems = ref<ProductListItem[]>([])
+
+function normalizeLabel(value: string) {
+  return value
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, char => char.toUpperCase())
 }
 
-// ─── Category chip navigation ───
-const genreOptions = computed(() => [
-  { id: 'all', label: 'Tất cả' },
-  ...categories.map(c => ({ id: c.id, label: c.label }))
-])
+const genreCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {}
+  for (const item of facetItems.value) {
+    for (const genre of item.genres.length ? item.genres : item.genre ? [item.genre] : []) {
+      counts[genre] = (counts[genre] || 0) + 1
+    }
+  }
+  return counts
+})
 
-const moodOptions = computed(() => [
-  { id: 'all', label: 'Tất cả' },
-  ...['Sôi động', 'Lãng mạn', 'Chill', 'Tự sự', 'Hùng tráng', 'Vui tươi'].map(m => ({ id: m, label: m }))
-])
+const genreOptions = computed(() => {
+  const values = new Set<string>()
+  for (const item of facetItems.value) {
+    for (const genre of item.genres.length ? item.genres : item.genre ? [item.genre] : []) {
+      values.add(genre)
+    }
+  }
+  if (selectedGenre.value !== 'all') values.add(selectedGenre.value)
+  return [
+    { id: 'all', label: 'Tất cả' },
+    ...Array.from(values).sort((a, b) => a.localeCompare(b)).map(genre => ({
+      id: genre,
+      label: normalizeLabel(genre)
+    }))
+  ]
+})
+
+const useCaseCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {}
+  for (const item of facetItems.value) {
+    for (const useCase of item.useCases) {
+      counts[useCase] = (counts[useCase] || 0) + 1
+    }
+  }
+  return counts
+})
+
+const useCaseOptions = computed(() => {
+  return [
+    { id: 'all', label: 'Tất cả' },
+    ...KNOWN_USE_CASES.map(useCase => ({
+      id: useCase.id,
+      label: useCase.label
+    }))
+  ]
+})
+
+const resultCount = computed(() => pagination.value?.totalItems ?? displayItems.value.length)
+const hasLoadedOnce = ref(false)
+const displayItems = computed<ProductListItem[]>(() => {
+  if (resource.status.value === 'loading' && lastRenderedItems.value.length > 0) {
+    return lastRenderedItems.value
+  }
+  return items.value
+})
+const showLoadingOverlay = computed(() => resource.status.value === 'loading' && hasLoadedOnce.value)
+
+function buildQuery(overrides?: Partial<{
+  q: string
+  genre: string
+  useCase: string
+  duration: DurationFilter
+  sort: SortFilter
+  page: number
+}>): Record<string, string> {
+  const state = {
+    q: searchQ.value.trim(),
+    genre: selectedGenre.value,
+    useCase: selectedUseCase.value,
+    duration: selectedDuration.value,
+    sort: selectedSort.value,
+    page: currentPage.value,
+    ...overrides
+  }
+
+  const query: Record<string, string> = {}
+  if (state.q) query.q = state.q
+  if (state.genre !== 'all') query.genre = state.genre
+  if (state.useCase !== 'all') query.useCase = state.useCase
+  if (state.duration !== 'all') query.duration = state.duration
+  if (state.sort !== DEFAULT_SORT) query.sort = state.sort
+  if (state.page > 1) query.page = String(state.page)
+  if (query.page || Object.keys(query).length > 0) query.pageSize = String(DEFAULT_PAGE_SIZE)
+  return query
+}
+
+function syncBrowserUrl(overrides?: Parameters<typeof buildQuery>[0]) {
+  const query = buildQuery(overrides)
+  const search = new URLSearchParams(query).toString()
+  const nextUrl = search ? `${route.path}?${search}` : route.path
+  window.history.replaceState(window.history.state, '', nextUrl)
+}
+
+function applyFilters(options?: { resetPage?: boolean }) {
+  if (options?.resetPage) currentPage.value = 1
+  syncBrowserUrl()
+  reload()
+}
 
 function changeGenre(genre: string) {
   selectedGenre.value = genre
-  const query: Record<string, string> = {}
-  if (searchQ.value.trim()) query.q = searchQ.value.trim()
-  if (genre && genre !== 'all') query.genre = genre
-  router.replace({ name: 'market', query })
+  applyFilters({ resetPage: true })
 }
 
+function changeDuration(duration: DurationFilter) {
+  selectedDuration.value = duration
+  applyFilters({ resetPage: true })
+}
+
+function changeUseCase(useCase: string) {
+  selectedUseCase.value = useCase
+  applyFilters({ resetPage: true })
+}
+
+function changeSort(sort: SortFilter) {
+  selectedSort.value = sort
+  applyFilters({ resetPage: true })
+}
+
+let searchTimer: number | null = null
+
 function submitSearch() {
-  const q = searchQ.value.trim()
-  const query: Record<string, string> = {}
-  if (q) query.q = q
-  if (selectedGenre.value && selectedGenre.value !== 'all') query.genre = selectedGenre.value
-  router.replace({ name: 'market', query })
+  if (searchTimer) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  applyFilters({ resetPage: true })
+}
+
+function scheduleSearch() {
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => {
+    submitSearch()
+  }, 300)
 }
 
 function clearFilters() {
   selectedGenre.value = 'all'
-  selectedMood.value = 'all'
-  selectedSort.value = 'popular'
-  priceMin.value = null
-  priceMax.value = null
+  selectedSort.value = DEFAULT_SORT
   selectedDuration.value = 'all'
-  selectedPurpose.value = 'all'
+  selectedUseCase.value = 'all'
   searchQ.value = ''
-  router.replace({ name: 'market', query: {} })
+  currentPage.value = 1
+  syncBrowserUrl()
+  reload()
 }
 
 const hasActiveFilters = computed(() =>
   selectedGenre.value !== 'all' ||
-  selectedMood.value !== 'all' ||
   selectedDuration.value !== 'all' ||
-  selectedPurpose.value !== 'all' ||
-  priceMin.value !== null ||
-  priceMax.value !== null ||
+  selectedUseCase.value !== 'all' ||
   searchQ.value.trim() !== ''
 )
 
@@ -205,24 +273,40 @@ function toggleSection(key: keyof typeof filtersExpanded.value) {
   filtersExpanded.value[key] = !filtersExpanded.value[key]
 }
 
-function reload() { resource.run() }
+function reload() {
+  void resource.run().catch(() => undefined)
+}
 
-// ─── Sync URL → local state ───
-watch(() => route.query, () => {
-  const q = typeof route.query.q === 'string' ? route.query.q : ''
-  const genre = typeof route.query.genre === 'string' ? route.query.genre : 'all'
-  searchQ.value = q
-  selectedGenre.value = genre || 'all'
+function reloadFacets() {
+  void facetResource.run().catch(() => undefined)
+}
+
+function goToPage(page: number) {
+  if (!pagination.value) return
+  currentPage.value = Math.min(Math.max(1, page), pagination.value.totalPages)
+  syncBrowserUrl()
   reload()
+}
+
+reload()
+
+watch(items, value => {
+  if (value.length > 0) {
+    lastRenderedItems.value = value
+  }
 })
 
-onMounted(() => {
-  const q = typeof route.query.q === 'string' ? route.query.q : ''
-  const genre = typeof route.query.genre === 'string' ? route.query.genre : 'all'
-  searchQ.value = q
-  selectedGenre.value = genre || 'all'
-  reload()
+watch(() => resource.status.value, status => {
+  if (status === 'success' || status === 'error') {
+    hasLoadedOnce.value = true
+  }
 })
+
+watch(() => facetItems.value.length, value => {
+  if (value === 0 && facetResource.status.value === 'idle') {
+    reloadFacets()
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -245,8 +329,8 @@ onMounted(() => {
             <RouterLink to="/market" class="btn btn-primary btn-lg">
               🔥 Khám phá ngay
             </RouterLink>
-            <RouterLink to="/market?genre=lofi" class="btn btn-ghost btn-lg">
-              Lo-Fi &amp; Chill →
+            <RouterLink to="/market?sort=title%3Aasc" class="btn btn-ghost btn-lg">
+              Xem theo bảng chữ cái →
             </RouterLink>
           </div>
         </div>
@@ -315,46 +399,9 @@ onMounted(() => {
                 <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedGenre === g.id }" />
                 <span class="mp-fcheck__label">{{ g.label }}</span>
                 <span class="mp-fcheck__count">
-                  {{ g.id === 'all' ? rawProducts.length : rawProducts.filter(r => r.category === g.id).length }}
+                  {{ g.id === 'all' ? resultCount : (genreCounts[g.id] || 0) }}
                 </span>
               </label>
-            </div>
-          </div>
-
-          <!-- ── Khoảng giá ── -->
-          <div class="mp-fblock">
-            <button class="mp-fblock__title" @click="toggleSection('price')">
-              Khoảng giá (₫)
-              <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.price }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div v-if="filtersExpanded.price" class="mp-fblock__body">
-              <div class="mp-fprice">
-                <div class="mp-fprice__presets">
-                  <button class="mp-fprice__chip" :class="{ 'is-active': priceMin === null && priceMax === null }" @click="priceMin = null; priceMax = null">Tất cả</button>
-                  <button class="mp-fprice__chip" :class="{ 'is-active': priceMax === 2000000 }" @click="priceMin = null; priceMax = 2000000">Dưới 2tr</button>
-                  <button class="mp-fprice__chip" :class="{ 'is-active': priceMin === 2000000 && priceMax === 3000000 }" @click="priceMin = 2000000; priceMax = 3000000">2tr – 3tr</button>
-                  <button class="mp-fprice__chip" :class="{ 'is-active': priceMin === 3000000 }" @click="priceMin = 3000000; priceMax = null">Trên 3tr</button>
-                </div>
-                <div class="mp-fprice__inputs">
-                  <input
-                    v-model.number="priceMin"
-                    type="number"
-                    class="mp-fprice__input"
-                    placeholder="Từ"
-                    min="0"
-                    step="100000"
-                  />
-                  <span class="mp-fprice__sep">–</span>
-                  <input
-                    v-model.number="priceMax"
-                    type="number"
-                    class="mp-fprice__input"
-                    placeholder="Đến"
-                    min="0"
-                    step="100000"
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
@@ -370,23 +417,9 @@ onMounted(() => {
                 { id: 'lt2', label: 'Dưới 2 phút' },
                 { id: '2to4', label: '2 – 4 phút' },
                 { id: 'gt4', label: 'Trên 4 phút' }
-              ]" :key="d.id" class="mp-fcheck" :class="{ 'is-active': selectedDuration === d.id }" @click="selectedDuration = d.id">
+              ]" :key="d.id" class="mp-fcheck" :class="{ 'is-active': selectedDuration === d.id }" @click="changeDuration(d.id)">
                 <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedDuration === d.id }" />
                 <span class="mp-fcheck__label">{{ d.label }}</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- ── Tâm trạng ── -->
-          <div class="mp-fblock">
-            <button class="mp-fblock__title" @click="toggleSection('mood')">
-              Tâm trạng
-              <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.mood }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div v-if="filtersExpanded.mood" class="mp-fblock__body">
-              <label v-for="m in moodOptions" :key="m.id" class="mp-fcheck" :class="{ 'is-active': selectedMood === m.id }" @click="selectedMood = m.id">
-                <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedMood === m.id }" />
-                <span class="mp-fcheck__label">{{ m.label }}</span>
               </label>
             </div>
           </div>
@@ -398,13 +431,12 @@ onMounted(() => {
               <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.purpose }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div v-if="filtersExpanded.purpose" class="mp-fblock__body">
-              <label v-for="p in [
-                { id: 'all', label: 'Tất cả' },
-                { id: 'YOUTUBE', label: 'YouTube / Online' },
-                { id: 'PERFORMANCE', label: 'Biểu diễn trực tiếp' }
-              ]" :key="p.id" class="mp-fcheck" :class="{ 'is-active': selectedPurpose === p.id }" @click="selectedPurpose = p.id">
-                <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedPurpose === p.id }" />
+              <label v-for="p in useCaseOptions" :key="p.id" class="mp-fcheck" :class="{ 'is-active': selectedUseCase === p.id }" @click="changeUseCase(p.id)">
+                <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedUseCase === p.id }" />
                 <span class="mp-fcheck__label">{{ p.label }}</span>
+                <span class="mp-fcheck__count">
+                  {{ p.id === 'all' ? facetItems.length : (useCaseCounts[p.id] || 0) }}
+                </span>
               </label>
             </div>
           </div>
@@ -417,17 +449,13 @@ onMounted(() => {
                 {{ genreOptions.find(g => g.id === selectedGenre)?.label }}
                 <button @click="changeGenre('all')">×</button>
               </span>
-              <span v-if="selectedMood !== 'all'" class="mp-sidebar__active-tag">
-                {{ selectedMood }}
-                <button @click="selectedMood = 'all'">×</button>
-              </span>
               <span v-if="selectedDuration !== 'all'" class="mp-sidebar__active-tag">
                 Thời lượng
-                <button @click="selectedDuration = 'all'">×</button>
+                <button @click="changeDuration('all')">×</button>
               </span>
-              <span v-if="priceMin !== null || priceMax !== null" class="mp-sidebar__active-tag">
-                Giá lọc
-                <button @click="priceMin = null; priceMax = null">×</button>
+              <span v-if="selectedUseCase !== 'all'" class="mp-sidebar__active-tag">
+                {{ useCaseOptions.find(p => p.id === selectedUseCase)?.label }}
+                <button @click="changeUseCase('all')">×</button>
               </span>
             </div>
           </div>
@@ -446,7 +474,7 @@ onMounted(() => {
                 v-model="searchQ"
                 type="search"
                 placeholder="Tìm tác phẩm, nghệ sĩ..."
-                @input="submitSearch"
+                @input="scheduleSearch"
               />
               <button type="submit" class="btn btn-primary btn-sm">Tìm</button>
             </form>
@@ -454,16 +482,18 @@ onMounted(() => {
             <!-- Right: sort + count -->
             <div class="mp-toolbar__right">
               <span class="mp-toolbar__count">
-                <strong>{{ filteredItems.length }}</strong> tác phẩm
+                <strong>{{ resultCount }}</strong> tác phẩm
               </span>
               <div class="mp-toolbar__sort">
                 <label class="mp-toolbar__sort-label">Sắp xếp:</label>
-                <select v-model="selectedSort" class="mp-toolbar__select">
-                  <option value="popular">Phổ biến nhất</option>
-                  <option value="rating">Đánh giá cao</option>
-                  <option value="newest">Mới nhất</option>
-                  <option value="price_asc">Giá tăng dần</option>
-                  <option value="price_desc">Giá giảm dần</option>
+                <select v-model="selectedSort" class="mp-toolbar__select" @change="changeSort(selectedSort)">
+                  <option value="createdAt:desc">Mới đăng gần đây</option>
+                  <option value="updatedAt:desc">Cập nhật gần đây</option>
+                  <option value="title:asc">Tên A → Z</option>
+                  <option value="title:desc">Tên Z → A</option>
+                  <option value="genre:asc">Thể loại A → Z</option>
+                  <option value="duration:asc">Thời lượng tăng dần</option>
+                  <option value="duration:desc">Thời lượng giảm dần</option>
                 </select>
               </div>
             </div>
@@ -483,7 +513,7 @@ onMounted(() => {
           <!-- ── Product Grid ── -->
           <div class="mp-grid-area">
             <!-- Loading state -->
-            <template v-if="resource.status.value === 'idle' || resource.status.value === 'loading'">
+            <template v-if="(resource.status.value === 'idle' || resource.status.value === 'loading') && !hasLoadedOnce && !displayItems.length">
               <div class="pgrid-skeleton">
                 <SkeletonCard v-for="i in 12" :key="i" />
               </div>
@@ -491,7 +521,7 @@ onMounted(() => {
 
             <!-- Error state -->
             <ErrorState
-              v-else-if="resource.status.value === 'error'"
+              v-else-if="resource.status.value === 'error' && !items.length"
               title="Không thể tải marketplace"
               :message="errorMessage"
               :request-id="errorRequestId"
@@ -500,7 +530,7 @@ onMounted(() => {
             />
 
             <!-- Empty state -->
-            <div v-else-if="!filteredItems.length" class="mp-empty">
+            <div v-else-if="resource.status.value !== 'loading' && !items.length" class="mp-empty">
               <div class="mp-empty__icon">🎵</div>
               <div class="mp-empty__title">Không tìm thấy tác phẩm</div>
               <div class="mp-empty__sub">Thử thay đổi từ khoá hoặc điều chỉnh bộ lọc</div>
@@ -509,12 +539,24 @@ onMounted(() => {
 
             <!-- Grid -->
             <div v-else>
-              <ProductGrid :items="filteredItems" :raw-products="rawProducts" />
+              <div v-if="resource.status.value === 'error'" class="mp-inline-error">
+                Không thể đồng bộ dữ liệu mới. Đang hiển thị kết quả gần nhất.
+              </div>
+              <div class="mp-grid-stack">
+                <ProductGrid :items="displayItems" />
+                <div v-if="showLoadingOverlay" class="mp-grid-overlay">
+                  <div class="mp-grid-overlay__spinner" />
+                </div>
+              </div>
 
               <!-- Pagination -->
               <div v-if="pagination && pagination.totalPages > 1" class="mp-pagination">
                 <div class="mp-pagination__info">
                   Trang {{ pagination.page }} / {{ pagination.totalPages }} · {{ pagination.totalItems }} tác phẩm
+                </div>
+                <div class="mp-pagination__actions">
+                  <button class="btn btn-ghost btn-sm" :disabled="!pagination.hasPrevPage" @click="goToPage(pagination.page - 1)">Trang trước</button>
+                  <button class="btn btn-primary btn-sm" :disabled="!pagination.hasNextPage" @click="goToPage(pagination.page + 1)">Trang sau</button>
                 </div>
               </div>
             </div>
@@ -1006,6 +1048,40 @@ onMounted(() => {
   gap: 14px;
 }
 
+.mp-grid-stack {
+  position: relative;
+}
+
+.mp-grid-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 24px;
+  background: linear-gradient(to bottom, rgba(248, 250, 252, 0.78), rgba(248, 250, 252, 0.18));
+  pointer-events: none;
+}
+
+.mp-grid-overlay__spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid rgba(31, 109, 240, 0.15);
+  border-top-color: var(--c-blue-500);
+  animation: spin .8s linear infinite;
+}
+
+.mp-inline-error {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  background: #fff7ed;
+  color: #9a3412;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ── Empty State ── */
 .mp-empty {
   display: flex;
@@ -1028,10 +1104,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 32px;
   padding: 12px;
 }
 .mp-pagination__info { font-size: 13px; color: var(--c-text-soft); }
+.mp-pagination__actions {
+  display: flex;
+  gap: 8px;
+}
 
 /* ── CTA Banner ── */
 .mp-explore-cta {
@@ -1106,5 +1188,9 @@ onMounted(() => {
   .mp-toolbar__right { justify-content: space-between; }
   .pgrid-skeleton { grid-template-columns: 1fr; }
   .mp-explore-cta__inner { flex-direction: column; text-align: center; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

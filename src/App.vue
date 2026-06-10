@@ -11,7 +11,7 @@ useReveal()
     <main>
       <router-view v-slot="{ Component, route }">
         <transition name="page" mode="out-in">
-          <component :is="Component" :key="route.name === 'search' ? 'search' : route.fullPath" />
+          <component :is="Component" :key="route.name === 'search' ? 'search' : (route.name === 'product' ? route.path : route.fullPath)" />
         </transition>
       </router-view>
     </main>

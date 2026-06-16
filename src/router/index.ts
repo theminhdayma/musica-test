@@ -1,10 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { prefetchProduct } from '../modules/catalog/productPrefetch'
 
 export const routes = [
   { path: '/', name: 'home', component: () => import('../pages/home/index.page.vue') },
   { path: '/market', name: 'market', component: () => import('../pages/market/index.page.vue') },
   { path: '/search/:q?/:tab?', name: 'search', component: () => import('../pages/search/index.page.vue'), props: true },
-  { path: '/product/:id', name: 'product', component: () => import('../pages/product/index.page.vue'), props: true },
+  {
+    path: '/product/:id',
+    name: 'product',
+    component: () => import('../pages/product/index.page.vue'),
+    props: true,
+    beforeEnter: async (to) => {
+      const id = String(to.params.id || '')
+      await prefetchProduct(id)
+      return true
+    }
+  },
   { path: '/cart', name: 'cart', component: () => import('../pages/cart/index.page.vue') },
   { path: '/checkout', name: 'checkout', component: () => import('../pages/checkout/index.page.vue') },
   { path: '/success', name: 'success', component: () => import('../pages/success/index.page.vue') },

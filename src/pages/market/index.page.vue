@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import { listProducts } from '../../modules/catalog/api'
@@ -22,7 +22,6 @@ useHead({
 
 const route = useRoute()
 
-type DurationFilter = 'all' | 'lt2' | '2to4' | 'gt4'
 type SortFilter =
   | 'createdAt:desc'
   | 'createdAt:asc'
@@ -32,34 +31,41 @@ type SortFilter =
   | 'title:desc'
   | 'genre:asc'
   | 'genre:desc'
-  | 'duration:asc'
-  | 'duration:desc'
 
 const DEFAULT_PAGE_SIZE = 40
 const DEFAULT_SORT: SortFilter = 'createdAt:desc'
 const FACET_PAGE_SIZE = 100
-
-const KNOWN_USE_CASES = [
-  { id: 'ADVERTISEMENT', label: 'Quảng cáo' },
-  { id: 'VLOG', label: 'Vlog' },
-  { id: 'SOCIAL', label: 'Mạng xã hội' },
-  { id: 'FILM', label: 'Phim' },
-  { id: 'GAME', label: 'Game' },
-  { id: 'PODCAST', label: 'Podcast' },
-  { id: 'EVENT', label: 'Sự kiện' }
+const SORT_OPTIONS: SortFilter[] = [
+  'createdAt:desc',
+  'createdAt:asc',
+  'updatedAt:desc',
+  'updatedAt:asc',
+  'title:asc',
+  'title:desc',
+  'genre:asc',
+  'genre:desc'
+]
+const PRICE_PRESETS = [
+  { id: 'under-2m', label: 'Dưới 2 triệu', maxPrice: 2_000_000 },
+  { id: '2m-25m', label: '2 - 2.5 triệu', minPrice: 2_000_000, maxPrice: 2_500_000 },
+  { id: '25m-3m', label: '2.5 - 3 triệu', minPrice: 2_500_000, maxPrice: 3_000_000 },
+  { id: 'over-3m', label: 'Trên 3 triệu', minPrice: 3_000_000 }
 ] as const
 
 const initialQuery = route.query
 const searchQ = ref(typeof initialQuery.q === 'string' ? initialQuery.q : '')
 const selectedGenre = ref(typeof initialQuery.genre === 'string' ? initialQuery.genre : 'all')
-const selectedSort = ref<SortFilter>(typeof initialQuery.sort === 'string' ? initialQuery.sort as SortFilter : DEFAULT_SORT)
-const selectedDuration = ref<DurationFilter>(typeof initialQuery.duration === 'string' ? initialQuery.duration as DurationFilter : 'all')
-const selectedUseCase = ref(typeof initialQuery.useCase === 'string' ? initialQuery.useCase : 'all')
+const selectedSort = ref<SortFilter>(
+  typeof initialQuery.sort === 'string' && SORT_OPTIONS.includes(initialQuery.sort as SortFilter)
+    ? initialQuery.sort as SortFilter
+    : DEFAULT_SORT
+)
+const minPriceInput = ref(readPriceParam(initialQuery.minPrice))
+const maxPriceInput = ref(readPriceParam(initialQuery.maxPrice))
 const currentPage = ref(readNumberParam(initialQuery.page, 1))
 const filtersExpanded = ref({
   genre: true,
-  duration: true,
-  purpose: true
+  price: true
 })
 
 function readNumberParam(v: unknown, fallback: number) {
@@ -68,12 +74,118 @@ function readNumberParam(v: unknown, fallback: number) {
   return Math.floor(n)
 }
 
+function readPriceParam(v: unknown) {
+  if (v === undefined || v === null || v === '') return ''
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0) return ''
+  return new Intl.NumberFormat('vi-VN').format(Math.floor(n))
+}
+
+function stripPriceText(value: string) {
+  return value.replace(/[^\d]/g, '')
+}
+
+function parsePriceInput(value: string) {
+  const normalized = stripPriceText(value.trim())
+  if (!normalized) return undefined
+  const n = Number(normalized)
+  if (!Number.isFinite(n) || n < 0) return undefined
+  return Math.floor(n)
+}
+
+function formatCompactVND(value: number) {
+  return `${new Intl.NumberFormat('vi-VN').format(value)} đ`
+}
+
+function formatPriceInputText(value: string) {
+  const n = parsePriceInput(value)
+  if (n === undefined) return ''
+  return new Intl.NumberFormat('vi-VN').format(n)
+}
+
+function toPriceText(value: number | undefined) {
+  if (value === undefined) return ''
+  return new Intl.NumberFormat('vi-VN').format(value)
+}
+
+function getCaretIndexAfterDigits(text: string, digitsBeforeCaret: number) {
+  if (digitsBeforeCaret <= 0) return 0
+  let digits = 0
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\d/.test(text[i])) digits += 1
+    if (digits >= digitsBeforeCaret) return i + 1
+  }
+  return text.length
+}
+
+function countDigitsBeforeCaret(text: string, caretIndex: number) {
+  return stripPriceText(text.slice(0, Math.max(0, caretIndex))).length
+}
+
+async function onMinPriceInput(event: Event) {
+  const el = event.target as HTMLInputElement | null
+  if (!el) return
+  const caret = el.selectionStart ?? el.value.length
+  const digitsBefore = countDigitsBeforeCaret(el.value, caret)
+  const formatted = formatPriceInputText(el.value)
+  minPriceInput.value = formatted
+  await nextTick()
+  const nextCaret = getCaretIndexAfterDigits(formatted, digitsBefore)
+  el.setSelectionRange(nextCaret, nextCaret)
+}
+
+async function onMaxPriceInput(event: Event) {
+  const el = event.target as HTMLInputElement | null
+  if (!el) return
+  const caret = el.selectionStart ?? el.value.length
+  const digitsBefore = countDigitsBeforeCaret(el.value, caret)
+  const formatted = formatPriceInputText(el.value)
+  maxPriceInput.value = formatted
+  await nextTick()
+  const nextCaret = getCaretIndexAfterDigits(formatted, digitsBefore)
+  el.setSelectionRange(nextCaret, nextCaret)
+}
+
+const normalizedPriceRange = computed(() => {
+  let minPrice = parsePriceInput(minPriceInput.value)
+  let maxPrice = parsePriceInput(maxPriceInput.value)
+
+  if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
+    ;[minPrice, maxPrice] = [maxPrice, minPrice]
+  }
+
+  return { minPrice, maxPrice }
+})
+
+const activePricePresetId = computed(() => {
+  const { minPrice, maxPrice } = normalizedPriceRange.value
+  const matchedPreset = PRICE_PRESETS.find(preset =>
+    preset.minPrice === minPrice && preset.maxPrice === maxPrice
+  )
+  return matchedPreset?.id ?? null
+})
+
+const priceFilterLabel = computed(() => {
+  const { minPrice, maxPrice } = normalizedPriceRange.value
+  if (minPrice !== undefined && maxPrice !== undefined) {
+    return `${formatCompactVND(minPrice)} - ${formatCompactVND(maxPrice)}`
+  }
+  if (minPrice !== undefined) {
+    return `Từ ${formatCompactVND(minPrice)}`
+  }
+  if (maxPrice !== undefined) {
+    return `Đến ${formatCompactVND(maxPrice)}`
+  }
+  return ''
+})
+
 const requestState = computed(() => {
+  const { minPrice, maxPrice } = normalizedPriceRange.value
   return {
     q: searchQ.value.trim(),
     genre: selectedGenre.value,
-    useCase: selectedUseCase.value,
-    duration: selectedDuration.value,
+    minPrice,
+    maxPrice,
     sort: selectedSort.value,
     page: currentPage.value,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -81,12 +193,12 @@ const requestState = computed(() => {
 })
 
 const resource = useAsyncResource(async () => {
-  const { q, genre, useCase, duration, sort, page, pageSize } = requestState.value
+  const { q, genre, minPrice, maxPrice, sort, page, pageSize } = requestState.value
   return await listProducts({
     q: q.trim() || undefined,
     genre: genre !== 'all' ? genre : undefined,
-    useCase: useCase !== 'all' ? useCase : undefined,
-    duration: duration !== 'all' ? duration : undefined,
+    minPrice,
+    maxPrice,
     sort,
     page,
     pageSize
@@ -142,26 +254,6 @@ const genreOptions = computed(() => {
   ]
 })
 
-const useCaseCounts = computed<Record<string, number>>(() => {
-  const counts: Record<string, number> = {}
-  for (const item of facetItems.value) {
-    for (const useCase of item.useCases) {
-      counts[useCase] = (counts[useCase] || 0) + 1
-    }
-  }
-  return counts
-})
-
-const useCaseOptions = computed(() => {
-  return [
-    { id: 'all', label: 'Tất cả' },
-    ...KNOWN_USE_CASES.map(useCase => ({
-      id: useCase.id,
-      label: useCase.label
-    }))
-  ]
-})
-
 const resultCount = computed(() => pagination.value?.totalItems ?? displayItems.value.length)
 const hasLoadedOnce = ref(false)
 const displayItems = computed<ProductListItem[]>(() => {
@@ -175,16 +267,17 @@ const showLoadingOverlay = computed(() => resource.status.value === 'loading' &&
 function buildQuery(overrides?: Partial<{
   q: string
   genre: string
-  useCase: string
-  duration: DurationFilter
+  minPrice: number | undefined
+  maxPrice: number | undefined
   sort: SortFilter
   page: number
 }>): Record<string, string> {
+  const { minPrice, maxPrice } = normalizedPriceRange.value
   const state = {
     q: searchQ.value.trim(),
     genre: selectedGenre.value,
-    useCase: selectedUseCase.value,
-    duration: selectedDuration.value,
+    minPrice,
+    maxPrice,
     sort: selectedSort.value,
     page: currentPage.value,
     ...overrides
@@ -193,8 +286,8 @@ function buildQuery(overrides?: Partial<{
   const query: Record<string, string> = {}
   if (state.q) query.q = state.q
   if (state.genre !== 'all') query.genre = state.genre
-  if (state.useCase !== 'all') query.useCase = state.useCase
-  if (state.duration !== 'all') query.duration = state.duration
+  if (state.minPrice !== undefined) query.minPrice = String(state.minPrice)
+  if (state.maxPrice !== undefined) query.maxPrice = String(state.maxPrice)
   if (state.sort !== DEFAULT_SORT) query.sort = state.sort
   if (state.page > 1) query.page = String(state.page)
   if (query.page || Object.keys(query).length > 0) query.pageSize = String(DEFAULT_PAGE_SIZE)
@@ -219,13 +312,22 @@ function changeGenre(genre: string) {
   applyFilters({ resetPage: true })
 }
 
-function changeDuration(duration: DurationFilter) {
-  selectedDuration.value = duration
+function setPricePreset(minPrice?: number, maxPrice?: number) {
+  minPriceInput.value = toPriceText(minPrice)
+  maxPriceInput.value = toPriceText(maxPrice)
   applyFilters({ resetPage: true })
 }
 
-function changeUseCase(useCase: string) {
-  selectedUseCase.value = useCase
+function applyPriceInputs() {
+  const { minPrice, maxPrice } = normalizedPriceRange.value
+  minPriceInput.value = toPriceText(minPrice)
+  maxPriceInput.value = toPriceText(maxPrice)
+  applyFilters({ resetPage: true })
+}
+
+function clearPriceFilter() {
+  minPriceInput.value = ''
+  maxPriceInput.value = ''
   applyFilters({ resetPage: true })
 }
 
@@ -254,8 +356,8 @@ function scheduleSearch() {
 function clearFilters() {
   selectedGenre.value = 'all'
   selectedSort.value = DEFAULT_SORT
-  selectedDuration.value = 'all'
-  selectedUseCase.value = 'all'
+  minPriceInput.value = ''
+  maxPriceInput.value = ''
   searchQ.value = ''
   currentPage.value = 1
   syncBrowserUrl()
@@ -264,8 +366,8 @@ function clearFilters() {
 
 const hasActiveFilters = computed(() =>
   selectedGenre.value !== 'all' ||
-  selectedDuration.value !== 'all' ||
-  selectedUseCase.value !== 'all' ||
+  normalizedPriceRange.value.minPrice !== undefined ||
+  normalizedPriceRange.value.maxPrice !== undefined ||
   searchQ.value.trim() !== ''
 )
 
@@ -405,39 +507,61 @@ watch(() => facetItems.value.length, value => {
             </div>
           </div>
 
-          <!-- ── Thời lượng ── -->
+          <!-- ── Giá sản phẩm ── -->
           <div class="mp-fblock">
-            <button class="mp-fblock__title" @click="toggleSection('duration')">
-              Thời lượng
-              <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.duration }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            <button class="mp-fblock__title" @click="toggleSection('price')">
+              Giá sản phẩm
+              <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.price }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
             </button>
-            <div v-if="filtersExpanded.duration" class="mp-fblock__body">
-              <label v-for="d in [
-                { id: 'all', label: 'Tất cả' },
-                { id: 'lt2', label: 'Dưới 2 phút' },
-                { id: '2to4', label: '2 – 4 phút' },
-                { id: 'gt4', label: 'Trên 4 phút' }
-              ]" :key="d.id" class="mp-fcheck" :class="{ 'is-active': selectedDuration === d.id }" @click="changeDuration(d.id)">
-                <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedDuration === d.id }" />
-                <span class="mp-fcheck__label">{{ d.label }}</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- ── Mục đích sử dụng ── -->
-          <div class="mp-fblock">
-            <button class="mp-fblock__title" @click="toggleSection('purpose')">
-              Mục đích sử dụng
-              <svg class="mp-fblock__chevron" :class="{ 'is-open': filtersExpanded.purpose }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div v-if="filtersExpanded.purpose" class="mp-fblock__body">
-              <label v-for="p in useCaseOptions" :key="p.id" class="mp-fcheck" :class="{ 'is-active': selectedUseCase === p.id }" @click="changeUseCase(p.id)">
-                <span class="mp-fcheck__radio" :class="{ 'is-checked': selectedUseCase === p.id }" />
-                <span class="mp-fcheck__label">{{ p.label }}</span>
-                <span class="mp-fcheck__count">
-                  {{ p.id === 'all' ? facetItems.length : (useCaseCounts[p.id] || 0) }}
-                </span>
-              </label>
+            <div v-if="filtersExpanded.price" class="mp-fblock__body">
+              <div class="mp-fprice">
+                <div class="mp-fprice__presets">
+                  <button
+                    v-for="preset in PRICE_PRESETS"
+                    :key="preset.id"
+                    type="button"
+                    class="mp-fprice__chip"
+                    :class="{ 'is-active': activePricePresetId === preset.id }"
+                    @click="setPricePreset(preset.minPrice, preset.maxPrice)"
+                  >
+                    {{ preset.label }}
+                  </button>
+                </div>
+                <div class="mp-fprice__inputs">
+                  <input
+                    :value="minPriceInput"
+                    class="mp-fprice__input"
+                    type="text"
+                    inputmode="numeric"
+                    placeholder="Từ"
+                    @input="onMinPriceInput"
+                    @keydown.enter.prevent="applyPriceInputs"
+                  />
+                  <span class="mp-fprice__sep">-</span>
+                  <input
+                    :value="maxPriceInput"
+                    class="mp-fprice__input"
+                    type="text"
+                    inputmode="numeric"
+                    placeholder="Đến"
+                    @input="onMaxPriceInput"
+                    @keydown.enter.prevent="applyPriceInputs"
+                  />
+                </div>
+                <div class="mp-fprice__actions">
+                  <button type="button" class="btn btn-primary btn-sm" @click="applyPriceInputs">
+                    Áp dụng
+                  </button>
+                  <button
+                    v-if="priceFilterLabel"
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    @click="clearPriceFilter"
+                  >
+                    Xóa giá
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -449,13 +573,9 @@ watch(() => facetItems.value.length, value => {
                 {{ genreOptions.find(g => g.id === selectedGenre)?.label }}
                 <button @click="changeGenre('all')">×</button>
               </span>
-              <span v-if="selectedDuration !== 'all'" class="mp-sidebar__active-tag">
-                Thời lượng
-                <button @click="changeDuration('all')">×</button>
-              </span>
-              <span v-if="selectedUseCase !== 'all'" class="mp-sidebar__active-tag">
-                {{ useCaseOptions.find(p => p.id === selectedUseCase)?.label }}
-                <button @click="changeUseCase('all')">×</button>
+              <span v-if="priceFilterLabel" class="mp-sidebar__active-tag">
+                {{ priceFilterLabel }}
+                <button @click="clearPriceFilter">×</button>
               </span>
             </div>
           </div>
@@ -492,8 +612,6 @@ watch(() => facetItems.value.length, value => {
                   <option value="title:asc">Tên A → Z</option>
                   <option value="title:desc">Tên Z → A</option>
                   <option value="genre:asc">Thể loại A → Z</option>
-                  <option value="duration:asc">Thời lượng tăng dần</option>
-                  <option value="duration:desc">Thời lượng giảm dần</option>
                 </select>
               </div>
             </div>
@@ -910,6 +1028,7 @@ watch(() => facetItems.value.length, value => {
 }
 
 .mp-fprice__inputs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.mp-fprice__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .mp-fprice__input {
   padding: 7px 10px;
   border: 1px solid var(--c-border);

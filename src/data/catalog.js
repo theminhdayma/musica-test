@@ -33,6 +33,22 @@ const cov = {
 
 export const products = [
   {
+    id: '55559494-4a55-422c-a6ec-79be0df83977', title: 'Tác phẩm mẫu (có tài liệu)',
+    artist: 'MusicA', artistId: 'musica',
+    category: 'pop', mood: 'Chill',
+    availablePurposes: ['YOUTUBE', 'PERFORMANCE'],
+    duration: '3:12', bpm: 96, key: 'C Major',
+    releaseDate: '2026-06-12', publisher: 'MusicA',
+    isrc: 'VN-MUS-26-55555', cover: cov.sunrise,
+    basePrice: 2_000_000, rating: 4.8, listens: 1200,
+    tags: ['Tài liệu', 'Demo'],
+    description: 'Tác phẩm demo để kiểm tra hiển thị file mô tả PDF trực tiếp ngay trong phần Về tác phẩm, theo cách xem tài liệu giống Google Drive.',
+    samplePeak: [6,10,14,18,24,30,38,44,50,54,58,60,58,54,50,44,38,30,24,18,14,10,6,10,16,22,28,36,44,52,58,60,58,52,44,36,28,22,16,10,6,12,20,28],
+    documents: [
+      { name: 'Mô tả tác phẩm (PDF)', url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', mimeType: 'application/pdf' }
+    ]
+  },
+  {
     id: 'song-01', title: 'Bình minh giữa thành phố',
     artist: 'Minh Trần', artistId: 'minh-tran',
     category: 'pop', mood: 'Vui tươi',
@@ -43,7 +59,12 @@ export const products = [
     basePrice: 2_400_000, rating: 4.8, listens: 124000,
     tags: ['Tươi sáng', 'Bài hát chính'],
     description: 'Một bản pop trẻ trung pha trộn âm hưởng synth hiện đại, phù hợp cho quảng cáo, vlog du lịch và các sự kiện ra mắt sản phẩm.',
-    samplePeak: [4,8,14,22,28,33,40,46,50,55,58,55,50,46,40,33,28,22,14,8,4,10,18,26,33,38,42,48,52,55,52,48,42,38,33,26,18,10,4,8,14,22,28,33]
+    samplePeak: [4,8,14,22,28,33,40,46,50,55,58,55,50,46,40,33,28,22,14,8,4,10,18,26,33,38,42,48,52,55,52,48,42,38,33,26,18,10,4,8,14,22,28,33],
+    documents: [
+      { name: 'Hợp đồng cấp phép (PDF)', url: 'https://example.com/sample-contract.pdf', mimeType: 'application/pdf' },
+      { name: 'Bản lời bài hát (DOCX)', url: 'https://example.com/sample-lyrics.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+      { name: 'Slide giới thiệu (PPTX)', url: 'https://example.com/sample-deck.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
+    ]
   },
   {
     id: 'song-02', title: 'Lặng nghe đêm thở',

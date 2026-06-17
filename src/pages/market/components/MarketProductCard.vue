@@ -362,7 +362,7 @@ const coverStyle = computed(() => {
   white-space: nowrap;
   position: absolute;
   top: -6px;
-  right: -95px;
+  right: -26px;
   z-index: 2;
   transform: translateY(-50%);
   box-shadow: 0 10px 26px rgba(249, 115, 22, 0.28);

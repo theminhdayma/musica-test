@@ -5,6 +5,7 @@ import BrandLogo from './BrandLogo.vue'
 import HeaderSearch from './HeaderSearch.vue'
 import { useCartStore } from '../../stores/cart'
 import { useAuthStore } from '../../modules/auth/auth.store'
+import { canAccessArtistArea, canAccessBuyerArea } from '../../modules/auth/auth.capabilities'
 
 const scrolled = ref(false)
 const route = useRoute()
@@ -14,8 +15,16 @@ const auth = useAuthStore()
 
 const count = computed(() => cart.items.reduce((s, i) => s + i.qty, 0))
 const isAuthed = computed(() => auth.isAuthenticated)
-const isBuyer = computed(() => auth.roles.includes('BUYER'))
-const isArtist = computed(() => auth.roles.includes('ARTIST'))
+const canBuy = computed(() => canAccessBuyerArea(auth.roles))
+const isArtist = computed(() => canAccessArtistArea(auth.roles))
+const displayName = computed(() => {
+  const fullName = auth.me?.user?.fullName || auth.currentUser?.fullName
+  if (fullName && fullName.trim()) {
+    return fullName.trim()
+  }
+
+  return auth.me?.user?.email || auth.currentUser?.email || 'bạn'
+})
 
 function logout() {
   auth.logout()
@@ -49,7 +58,10 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
           <span v-if="count" class="badge">{{ count }}</span>
         </RouterLink>
         <RouterLink v-if="!isAuthed" to="/login" class="btn btn-ghost btn-sm">Đăng nhập</RouterLink>
-        <RouterLink v-if="isAuthed && isBuyer" to="/me/certificates" class="btn btn-ghost btn-sm">Chứng nhận</RouterLink>
+        <div v-if="isAuthed" class="hello-chip">
+          Xin chào, <span class="hello-name">{{ displayName }}</span>
+        </div>
+        <RouterLink v-if="isAuthed && canBuy" to="/me/certificates" class="btn btn-ghost btn-sm">Chứng nhận</RouterLink>
         <RouterLink v-if="isAuthed && isArtist" to="/me/products" class="btn btn-ghost btn-sm">Tác phẩm</RouterLink>
         <button v-if="isAuthed" class="btn btn-ghost btn-sm" type="button" @click="logout">Đăng xuất</button>
         <button class="btn btn-primary btn-sm">Đăng bán tác quyền</button>
@@ -107,6 +119,23 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
   align-items: center;
   gap: 8px;
 }
+.hello-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-full);
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hello-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .header-search { margin-right: 6px; }
 .icon-btn {
   position: relative;
@@ -147,6 +176,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
   .header-search { flex: 1; margin-right: 0; }
 }
 @media (max-width: 640px) {
+  .hello-chip { display: none; }
   .nav-actions .btn-ghost { display: none; }
   .nav-actions .btn-primary { display: none; }
   .header-inner { gap: 12px; }

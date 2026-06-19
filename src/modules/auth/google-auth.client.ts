@@ -1,0 +1,101 @@
+import { initializeApp, getApp, getApps } from 'firebase/app'
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
+import { ApiError } from '../../shared/api/errors'
+
+type FirebaseClientConfig = {
+  apiKey: string
+  authDomain: string
+  projectId: string
+  appId: string
+  messagingSenderId?: string
+  storageBucket?: string
+}
+
+function readFirebaseConfig(): FirebaseClientConfig | null {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
+  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+  const appId = import.meta.env.VITE_FIREBASE_APP_ID
+
+  if (!apiKey || !authDomain || !projectId || !appId) {
+    return null
+  }
+
+  return {
+    apiKey,
+    authDomain,
+    projectId,
+    appId,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET
+  }
+}
+
+function getFirebaseAppInstance() {
+  const config = readFirebaseConfig()
+
+  if (!config) {
+    throw new ApiError({
+      statusCode: 500,
+      code: 'GOOGLE_CLIENT_NOT_CONFIGURED',
+      message: 'Google Sign-In chưa được cấu hình trên frontend.'
+    })
+  }
+
+  if (getApps().length > 0) {
+    return getApp()
+  }
+
+  return initializeApp(config)
+}
+
+export function isGoogleClientConfigured() {
+  return !!readFirebaseConfig()
+}
+
+export async function getFirebaseIdTokenFromGoogle() {
+  try {
+    const app = getFirebaseAppInstance()
+    const auth = getAuth(app)
+    const provider = new GoogleAuthProvider()
+
+    provider.addScope('email')
+    provider.addScope('profile')
+    provider.setCustomParameters({ prompt: 'select_account' })
+
+    const result = await signInWithPopup(auth, provider)
+    const idToken = await result.user.getIdToken(true)
+
+    await signOut(auth)
+
+    if (!idToken) {
+      throw new ApiError({
+        statusCode: 500,
+        code: 'GOOGLE_CLIENT_ERROR',
+        message: 'Không thể lấy Firebase ID token từ Google.'
+      })
+    }
+
+    return idToken
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+
+    const firebaseError = error as { code?: string; message?: string }
+
+    if (firebaseError.code === 'auth/popup-closed-by-user') {
+      throw new ApiError({
+        statusCode: 400,
+        code: 'GOOGLE_POPUP_CLOSED',
+        message: 'Bạn đã đóng cửa sổ đăng nhập Google trước khi hoàn tất.'
+      })
+    }
+
+    throw new ApiError({
+      statusCode: 500,
+      code: 'GOOGLE_CLIENT_ERROR',
+      message: firebaseError.message || 'Không thể lấy thông tin đăng nhập Google.'
+    })
+  }
+}

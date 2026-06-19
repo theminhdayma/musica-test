@@ -1,41 +1,28 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../modules/auth/auth.store'
 import { getAuthErrorMessage } from '../../modules/auth/auth.messages'
 import { getDefaultAuthenticatedRoute } from '../../modules/auth/auth.routing'
 import { getFirebaseIdTokenFromGoogle, isGoogleClientConfigured } from '../../modules/auth/google-auth.client'
 
 const router = useRouter()
-const route = useRoute()
 const auth = useAuthStore()
 
 const email = ref('')
-const password = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const isGoogleConfigured = isGoogleClientConfigured()
 
-function getRedirectTarget() {
-  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : null
-  if (redirect) {
-    return redirect
-  }
-
-  return getDefaultAuthenticatedRoute(auth.roles, auth.selectedRole)
-}
-
-async function handleLogin() {
-  if (!email.value.trim() || !password.value) return
+async function submitEmail() {
+  if (!email.value.trim()) return
   errorMessage.value = null
   submitting.value = true
   try {
-    await auth.loginWithPassword(email.value.trim(), password.value)
-
-    const redirectTarget = getRedirectTarget()
-    await router.replace(redirectTarget)
+    await auth.requestOtp(email.value.trim(), 'signup_buyer')
+    router.push({ name: 'otp', query: { purpose: 'signup_buyer', email: email.value.trim(), role: 'BUYER' } })
   } catch (error) {
-    errorMessage.value = getAuthErrorMessage(error, 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.')
+    errorMessage.value = getAuthErrorMessage(error, 'Không thể gửi mã OTP. Vui lòng thử lại.')
   } finally {
     submitting.value = false
   }
@@ -48,11 +35,9 @@ async function handleGoogleLogin() {
     auth.setSelectedRole('BUYER')
     const firebaseIdToken = await getFirebaseIdTokenFromGoogle()
     await auth.loginWithGoogle(firebaseIdToken)
-
-    const redirectTarget = getRedirectTarget()
-    await router.replace(redirectTarget)
+    router.push(getDefaultAuthenticatedRoute(auth.roles, 'BUYER'))
   } catch (error) {
-    errorMessage.value = getAuthErrorMessage(error, 'Đăng nhập Google thất bại.')
+    errorMessage.value = getAuthErrorMessage(error, 'Đăng ký bằng Google thất bại.')
   } finally {
     submitting.value = false
   }
@@ -72,9 +57,9 @@ async function handleGoogleLogin() {
         />
         <div class="absolute inset-0 bg-gradient-to-t from-on-surface/85 to-transparent flex items-end p-8">
           <div class="text-white max-w-md">
-            <h2 class="text-2xl md:text-3xl font-extrabold mb-3 font-sans">Chào mừng trở lại MusicA</h2>
+            <h2 class="text-2xl md:text-3xl font-extrabold mb-3 font-sans">Mua bản quyền MusicA</h2>
             <p class="text-sm opacity-90 leading-relaxed">
-              Đăng nhập để tiếp tục khám phá, giao dịch và quản lý các tài sản âm nhạc của bạn trên hệ thống.
+              Sở hữu và bảo vệ bản quyền âm nhạc đỉnh cao một cách dễ dàng, nhanh chóng và an toàn.
             </p>
           </div>
         </div>
@@ -90,18 +75,15 @@ async function handleGoogleLogin() {
 
           <div class="text-left mb-6">
             <span class="inline-block px-3 py-1 bg-surface-container rounded-full text-primary text-xs font-bold uppercase mb-2">
-              ĐĂNG NHẬP
+              NGƯỜI MUA
             </span>
-            <h2 class="text-2xl font-bold mb-1">Chào mừng trở lại</h2>
-            <p class="text-sm text-text-mute">Đăng nhập để truy cập tài khoản của bạn.</p>
+            <h2 class="text-2xl font-bold mb-1">Tạo tài khoản Buyer</h2>
+            <p class="text-sm text-text-mute">Nhập email của bạn để bắt đầu đăng ký.</p>
           </div>
 
-          <form @submit.prevent="handleLogin" class="space-y-4">
-
-
-                <!-- Email Field -->
-                <div class="space-y-1">
-                  <label class="block font-numeric-data text-sm font-semibold text-on-surface text-left" for="email">Địa chỉ Email</label>
+          <form @submit.prevent="submitEmail" class="space-y-4">
+              <div class="space-y-1">
+                <label class="block font-numeric-data text-sm font-semibold text-on-surface text-left" for="email">Địa chỉ Email</label>
                 <div class="relative">
                   <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
                     <span class="material-symbols-outlined text-[18px]">mail</span>
@@ -117,49 +99,25 @@ async function handleGoogleLogin() {
                 </div>
               </div>
 
-              <!-- Password Field -->
-              <div class="space-y-1">
-                <div class="flex justify-between items-center">
-                  <label class="block font-numeric-data text-sm font-semibold text-on-surface" for="password">Mật khẩu</label>
-                  <router-link :to="{ name: 'forgot-password' }" class="text-xs text-primary font-bold hover:underline">
-                    Quên mật khẩu?
-                  </router-link>
-                </div>
-                <div class="relative">
-                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
-                    <span class="material-symbols-outlined text-[18px]">lock</span>
-                  </span>
-                  <input
-                    v-model="password"
-                    class="w-full h-11 pl-10 pr-3 bg-bg-soft border border-border-light rounded-xl text-sm text-on-surface placeholder:text-text-mute focus:outline-none focus:border-border-strong focus:bg-surface-container-lowest transition-all"
-                    id="password"
-                    placeholder="••••••••"
-                    required
-                    type="password"
-                  />
-                </div>
-              </div>
-
               <!-- Error Alert -->
               <div v-if="errorMessage" class="p-3 bg-error-container border border-error rounded-xl text-error text-sm text-left">
                 {{ errorMessage }}
               </div>
 
-              <!-- Submit Button -->
               <button
-                class="w-full h-12 bg-gradient-to-r from-primary to-secondary text-on-primary font-bold text-sm rounded-full shadow-[0_3px_10px_0_rgba(0,107,95,0.15)] hover:shadow-[0_5px_15px_rgba(0,107,95,0.25)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 mt-2"
+                class="w-full h-12 bg-gradient-to-r from-primary to-secondary text-on-primary font-bold text-sm rounded-full flex items-center justify-center gap-1.5 hover:opacity-95 transition-all scale-95 active:scale-90"
                 type="submit"
                 :disabled="submitting"
               >
-                <span v-if="submitting">Đang đăng nhập…</span>
+                <span v-if="submitting">Đang xử lý…</span>
                 <template v-else>
-                  <span>Đăng nhập</span>
+                  <span>Tiếp tục bằng Email</span>
                   <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
                 </template>
               </button>
           </form>
 
-          <!-- Social Login -->
+          <!-- Google Auth Section -->
           <div class="pt-5">
             <div class="relative flex items-center py-1 mb-3">
               <div class="flex-grow border-t border-border-light"></div>
@@ -168,8 +126,8 @@ async function handleGoogleLogin() {
             </div>
 
             <button
-              @click="handleGoogleLogin()"
-              class="w-full h-11 bg-surface border border-border-light text-on-surface font-bold text-sm rounded-full hover:bg-bg-soft hover:border-border-strong transition-all flex items-center justify-center gap-2"
+              @click="handleGoogleLogin"
+              class="w-full h-11 bg-surface-container-lowest border border-border-light text-on-surface font-bold text-sm rounded-full flex items-center justify-center gap-2 hover:bg-bg-soft transition-colors scale-95 active:scale-90"
               type="button"
               :disabled="submitting || !isGoogleConfigured"
             >
@@ -179,22 +137,20 @@ async function handleGoogleLogin() {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
               </svg>
-              <span>{{ isGoogleConfigured ? 'Đăng nhập bằng Google (Buyer)' : 'Google chưa cấu hình' }}</span>
+              <span>{{ isGoogleConfigured ? 'Tiếp tục bằng Google' : 'Google chưa cấu hình' }}</span>
             </button>
             <p class="mt-2 text-left text-xs text-text-soft">
               {{
                 isGoogleConfigured
-                  ? 'Google login hiện chỉ áp dụng cho tài khoản Buyer. Artist vui lòng đăng nhập bằng email và mật khẩu.'
-                  : 'Thiếu biến môi trường Firebase nên chưa thể chạy flow Google thật trên client.'
+                  ? 'Google signup/login cho Buyer gọi trực tiếp `POST /client/auth/login/google`.'
+                  : 'Thiếu cấu hình Firebase nên frontend chưa thể lấy `firebaseIdToken` thật.'
               }}
             </p>
           </div>
 
           <div class="mt-8 text-left text-sm text-text-soft">
-            Chưa có tài khoản?
-            <router-link :to="{ name: 'register-role' }" class="text-primary font-bold hover:underline">
-              Đăng ký ngay
-            </router-link>
+            Đã có tài khoản?
+            <router-link :to="{ name: 'login' }" class="text-primary font-bold hover:underline">Đăng nhập</router-link>
           </div>
         </div>
       </div>

@@ -14,7 +14,7 @@ import { consumePrefetchedProduct } from '../modules/catalog/productPrefetch'
 import { ApiError } from '../shared/api/errors'
 import ErrorState from '../shared/ui/states/ErrorState.vue'
 import { useCartStore } from '../stores/cart'
-import MarketProductCard from '../pages/market/components/MarketProductCard.vue'
+import ProductGrid from '../pages/market/components/ProductGrid.vue'
 import ConfigOptionButton from '../components/product/ConfigOptionButton.vue'
 import WaveBars from '../components/ui/WaveBars.vue'
 import CheckList from '../components/ui/CheckList.vue'
@@ -543,14 +543,14 @@ const getIconForModification = (name) => {
     <!-- Related -->
     <section v-if="related.length > 0" class="section related">
       <div class="container">
-        <div class="section-head reveal">
-          <div>
-            <h2>Tác phẩm bạn có thể thích</h2>
+        <div class="related-grid-wrap">
+          <div class="section-head reveal">
+            <div>
+              <h2>Tác phẩm bạn có thể thích</h2>
+            </div>
           </div>
-        </div>
-        <div class="grid">
-          <div v-for="(p, i) in related" :key="p.id" class="reveal" :style="{ transitionDelay: (i * 50) + 'ms' }">
-            <MarketProductCard :item="p" />
+          <div class="reveal">
+            <ProductGrid :items="related" />
           </div>
         </div>
       </div>
@@ -1013,18 +1013,29 @@ const getIconForModification = (name) => {
   justify-content: center;
 }
 
-/* Related */
-.related .grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
+.related-grid-wrap {
+  width: calc(100% - 280px);
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
-@media (max-width: 1024px) { .related .grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 760px) { .related .grid { grid-template-columns: repeat(2, 1fr); } }
 
 @media (max-width: 980px) {
   .right { position: static; }
   .left-sticky { position: static; }
+}
+@media (max-width: 1100px) {
+  .related-grid-wrap {
+    width: calc(100% - 250px);
+    max-width: none;
+  }
+}
+@media (max-width: 900px) {
+  .related-grid-wrap {
+    width: 100%;
+  }
 }
 @media (max-width: 560px) {
   .player-row { grid-template-columns: 100px 1fr; gap: 14px; padding: 14px; }

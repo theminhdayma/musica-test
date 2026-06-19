@@ -1,13 +1,16 @@
 <script setup>
+import { useRoute } from 'vue-router'
 import AppHeader from './components/layout/AppHeader.vue'
 import AppFooter from './components/layout/AppFooter.vue'
 import { useReveal } from './composables/useReveal'
+
+const route = useRoute()
 useReveal()
 </script>
 
 <template>
   <div class="app-shell">
-    <AppHeader />
+    <AppHeader v-if="!route.meta.hideHeaderFooter" />
     <main>
       <router-view v-slot="{ Component, route }">
         <transition name="page" mode="out-in">
@@ -15,7 +18,7 @@ useReveal()
         </transition>
       </router-view>
     </main>
-    <AppFooter />
+    <AppFooter v-if="!route.meta.hideHeaderFooter" />
   </div>
 </template>
 

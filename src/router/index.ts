@@ -22,13 +22,13 @@ export const routes = [
   
   // Auth Routes
   { path: '/login', redirect: '/auth/login' },
-  { path: '/auth/login', name: 'login', component: () => import('../pages/auth/login.page.vue') },
-  { path: '/auth/register/role', name: 'register-role', component: () => import('../pages/auth/register-role.page.vue') },
-  { path: '/auth/register/buyer', name: 'register-buyer', component: () => import('../pages/auth/register-buyer.page.vue') },
-  { path: '/auth/register/artist', name: 'register-artist', component: () => import('../pages/auth/register-artist.page.vue') },
-  { path: '/auth/otp', name: 'otp', component: () => import('../pages/auth/otp.page.vue') },
-  { path: '/auth/complete-profile', name: 'complete-profile', component: () => import('../pages/auth/complete-profile.page.vue') },
-  { path: '/auth/forgot-password', name: 'forgot-password', component: () => import('../pages/auth/forgot-password.page.vue') },
+  { path: '/auth/login', name: 'login', component: () => import('../pages/auth/login.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/register/role', name: 'register-role', component: () => import('../pages/auth/register-role.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/register/buyer', name: 'register-buyer', component: () => import('../pages/auth/register-buyer.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/register/artist', name: 'register-artist', component: () => import('../pages/auth/register-artist.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/otp', name: 'otp', component: () => import('../pages/auth/otp.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/complete-profile', name: 'complete-profile', component: () => import('../pages/auth/complete-profile.page.vue'), meta: { hideHeaderFooter: true } },
+  { path: '/auth/forgot-password', name: 'forgot-password', component: () => import('../pages/auth/forgot-password.page.vue'), meta: { hideHeaderFooter: true } },
 
   // Protected Routes
   { path: '/me/certificates', name: 'my-certificates', component: () => import('../pages/certificates/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },

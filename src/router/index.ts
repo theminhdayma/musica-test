@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteLocationNormalized } from 'vue-router'
 import { prefetchProduct } from '../modules/catalog/productPrefetch'
 
 export const routes = [
@@ -10,7 +11,7 @@ export const routes = [
     name: 'product',
     component: () => import('../pages/product/index.page.vue'),
     props: true,
-    beforeEnter: async (to) => {
+    beforeEnter: async (to: RouteLocationNormalized) => {
       const id = String(to.params.id || '')
       await prefetchProduct(id)
       return true

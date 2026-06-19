@@ -15,7 +15,14 @@ export const createApp = ViteSSG(
     app.use(pinia)
 
     const auth = useAuthStore(pinia)
-    if (!import.meta.env.SSR) auth.hydrate()
+    if (!import.meta.env.SSR) {
+      auth.hydrate()
+      if (auth.accessToken) {
+        auth.hydrateMe().catch(() => {
+          auth.logout()
+        })
+      }
+    }
     setAccessTokenGetter(() => auth.accessToken)
     if (router) installRouterGuards({ router, auth })
   },

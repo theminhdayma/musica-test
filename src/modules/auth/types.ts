@@ -73,7 +73,7 @@ export type ForgotPasswordRequestResponseData = {
 
 export type ForgotPasswordConfirmInput = {
   email: string
-  code: string
+  verificationToken: string
   newPassword: string
 }
 
@@ -127,4 +127,5 @@ export type PendingOtpChallenge = {
 
 export type PendingForgotPassword = {
   email: string
+  verificationToken?: string | null
 }

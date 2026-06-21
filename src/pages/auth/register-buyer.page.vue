@@ -13,14 +13,23 @@ const email = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const isGoogleConfigured = isGoogleClientConfigured()
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function submitEmail() {
-  if (!email.value.trim()) return
+  const normalizedEmail = email.value.trim().toLowerCase()
+  if (!normalizedEmail) {
+    errorMessage.value = 'Vui lòng nhập email để tiếp tục.'
+    return
+  }
+  if (!EMAIL_PATTERN.test(normalizedEmail)) {
+    errorMessage.value = 'Email không đúng định dạng.'
+    return
+  }
   errorMessage.value = null
   submitting.value = true
   try {
-    await auth.requestOtp(email.value.trim(), 'signup_buyer')
-    router.push({ name: 'otp', query: { purpose: 'signup_buyer', email: email.value.trim(), role: 'BUYER' } })
+    await auth.requestOtp(normalizedEmail, 'signup_buyer')
+    router.push({ name: 'otp', query: { purpose: 'signup_buyer', email: normalizedEmail, role: 'BUYER' } })
   } catch (error) {
     errorMessage.value = getAuthErrorMessage(error, 'Không thể gửi mã OTP. Vui lòng thử lại.')
   } finally {

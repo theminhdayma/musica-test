@@ -5,6 +5,12 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     'Tài khoản Artist hiện chỉ hỗ trợ đăng nhập bằng email và mật khẩu.',
   PROVIDER_MISMATCH:
     'Phương thức đăng nhập không khớp với cách tài khoản này được tạo.',
+  EMAIL_ALREADY_EXISTS:
+    'Email này đã tồn tại. Vui lòng dùng email khác hoặc đăng nhập.',
+  EMAIL_NOT_FOUND:
+    'Không tìm thấy tài khoản với email này.',
+  PASSWORD_RESET_NOT_SUPPORTED:
+    'Tài khoản này không hỗ trợ quên mật khẩu bằng email và OTP.',
   INVALID_CREDENTIALS:
     'Mật khẩu không chính xác hoặc thông tin đăng nhập không hợp lệ.',
   AUTH_INSUFFICIENT_ROLE:
@@ -18,7 +24,9 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   GOOGLE_POPUP_CLOSED:
     'Bạn đã đóng cửa sổ đăng nhập Google trước khi hoàn tất.',
   GOOGLE_CLIENT_ERROR:
-    'Không thể lấy thông tin đăng nhập Google trên trình duyệt này. Vui lòng thử lại.'
+    'Không thể lấy thông tin đăng nhập Google trên trình duyệt này. Vui lòng thử lại.',
+  OTP_VERIFICATION_INVALID:
+    'Xác nhận OTP không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu mã mới.'
 }
 
 export function translateAuthErrorCode(code: string | undefined, fallback: string) {

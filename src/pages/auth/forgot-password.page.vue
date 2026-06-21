@@ -10,22 +10,31 @@ const auth = useAuthStore()
 
 const step = computed(() => (route.query.step as string) || 'request')
 const activeEmail = computed(() => (route.query.email as string) || auth.pendingForgotPassword?.email || auth.pendingOtpChallenge?.email || email.value.trim())
+const verificationToken = computed(() => (route.query.token as string) || auth.pendingForgotPassword?.verificationToken || '')
 
 const email = ref('')
-const code = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function handleRequest() {
-  if (!email.value.trim()) return
+  const normalizedEmail = email.value.trim().toLowerCase()
+  if (!normalizedEmail) {
+    errorMessage.value = 'Vui lòng nhập email để tiếp tục.'
+    return
+  }
+  if (!EMAIL_PATTERN.test(normalizedEmail)) {
+    errorMessage.value = 'Email không đúng định dạng.'
+    return
+  }
   errorMessage.value = null
   submitting.value = true
   try {
-    await auth.requestForgotPassword(email.value.trim())
-    router.push({ name: 'otp', query: { purpose: 'forgot_password', email: email.value.trim() } })
+    await auth.requestForgotPassword(normalizedEmail)
+    router.push({ name: 'otp', query: { purpose: 'forgot_password', email: normalizedEmail } })
   } catch (error) {
     errorMessage.value = getAuthErrorMessage(error, 'Không thể gửi yêu cầu đặt lại mật khẩu.')
   } finally {
@@ -34,9 +43,14 @@ async function handleRequest() {
 }
 
 async function handleConfirm() {
-  const otpCode = (route.query.code as string) || code.value
-  
-  if (!otpCode || !newPassword.value) return
+  if (!verificationToken.value) {
+    errorMessage.value = 'Phiên xác thực OTP không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu lại mã OTP.'
+    return
+  }
+  if (!newPassword.value) {
+    errorMessage.value = 'Vui lòng nhập mật khẩu mới.'
+    return
+  }
   if (newPassword.value !== confirmPassword.value) {
     errorMessage.value = 'Mật khẩu xác nhận không khớp.'
     return
@@ -47,7 +61,7 @@ async function handleConfirm() {
   try {
     await auth.confirmForgotPassword({
       email: activeEmail.value,
-      code: otpCode,
+      verificationToken: verificationToken.value,
       newPassword: newPassword.value
     })
     successMessage.value = 'Đặt lại mật khẩu thành công. Đang chuyển hướng về trang Đăng nhập...'
@@ -97,7 +111,7 @@ async function handleConfirm() {
             </span>
             <h2 class="text-2xl font-bold mb-1">Đặt lại mật khẩu</h2>
             <p class="text-sm text-text-mute">
-              {{ step === 'request' ? 'Nhập email của bạn để nhận mã xác minh OTP.' : 'Nhập mã xác nhận và đặt mật khẩu mới.' }}
+              {{ step === 'request' ? 'Nhập email của bạn để nhận mã xác minh OTP.' : 'Đặt mật khẩu mới sau khi mã OTP đã được xác thực.' }}
             </p>
             <p v-if="step !== 'request' && activeEmail" class="mt-2 text-xs text-text-soft">
               Email đang đặt lại mật khẩu: <span class="font-bold text-on-surface">{{ activeEmail }}</span>
@@ -135,18 +149,6 @@ async function handleConfirm() {
 
           <!-- Step 2: Confirm OTP & Set New Password -->
           <form v-else @submit.prevent="handleConfirm" class="space-y-4">
-            <div v-if="!route.query.code" class="space-y-1">
-              <label class="block font-numeric-data text-sm font-semibold text-on-surface text-left" for="code">Mã OTP xác nhận</label>
-              <input
-                v-model="code"
-                class="w-full h-11 px-4 rounded-xl bg-bg-soft border border-border-light text-sm text-on-surface placeholder:text-text-mute focus:outline-none focus:border-border-strong focus:bg-surface-container-lowest transition-all"
-                id="code"
-                placeholder="123456"
-                required
-                type="text"
-              />
-            </div>
-
             <div class="space-y-1">
               <label class="block font-numeric-data text-sm font-semibold text-on-surface text-left" for="newPassword">Mật khẩu mới</label>
               <input

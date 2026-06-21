@@ -51,6 +51,22 @@ describe('Auth Store (TDD)', () => {
     expect(token).toBe('proof-123')
   })
 
+  it('should persist forgot-password verification token after OTP verify', async () => {
+    const store = useAuthStore()
+    vi.spyOn(authApi, 'verifyOtpApi').mockResolvedValue({
+      data: { verified: true, verificationToken: 'forgot-proof-123' }
+    })
+
+    store.pendingOtpChallenge = { email: 'reset@example.com', purpose: 'forgot_password' }
+    const token = await store.verifyOtp('123456')
+
+    expect(token).toBe('forgot-proof-123')
+    expect(store.pendingForgotPassword).toEqual({
+      email: 'reset@example.com',
+      verificationToken: 'forgot-proof-123'
+    })
+  })
+
   it('should hydrate /me profile after successful login', async () => {
     const store = useAuthStore()
     const mockLogin = vi.spyOn(authApi, 'loginApi').mockResolvedValue({
@@ -116,5 +132,29 @@ describe('Auth Store (TDD)', () => {
 
     await expect(store.loginWithGoogle('firebase-token-123')).rejects.toEqual(apiError)
     expect(store.errorCode).toBe('ARTIST_GOOGLE_NOT_SUPPORTED')
+  })
+
+  it('should confirm forgot password with verification token', async () => {
+    const store = useAuthStore()
+    const mockConfirmForgotPassword = vi.spyOn(authApi, 'forgotPasswordConfirmApi').mockResolvedValue({
+      data: { reset: true }
+    })
+
+    store.pendingForgotPassword = {
+      email: 'reset@example.com',
+      verificationToken: 'forgot-proof-123'
+    }
+
+    await store.confirmForgotPassword({
+      newPassword: 'NewPassword123!'
+    })
+
+    expect(mockConfirmForgotPassword).toHaveBeenCalledWith({
+      email: 'reset@example.com',
+      verificationToken: 'forgot-proof-123',
+      newPassword: 'NewPassword123!'
+    })
+    expect(store.pendingForgotPassword).toBeNull()
+    expect(store.pendingOtpChallenge).toBeNull()
   })
 })

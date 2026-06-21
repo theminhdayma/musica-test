@@ -68,7 +68,7 @@ function selectRole(role: 'buyer' | 'artist') {
             >
               <div>
                 <h3 class="text-base font-bold text-on-surface group-hover:text-secondary transition-colors">Nghệ sĩ (Artist)</h3>
-                <p class="text-xs text-text-soft mt-1">Phát hành tác phẩm mới, tạo NFT và quản lý sản phẩm âm nhạc của bạn.</p>
+                <p class="text-xs text-text-soft mt-1">Phát hành tác phẩm mới và quản lý sản phẩm âm nhạc của bạn.</p>
               </div>
               <span class="material-symbols-outlined text-outline group-hover:text-secondary transition-colors text-[18px]">arrow_forward</span>
             </button>

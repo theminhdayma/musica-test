@@ -104,7 +104,7 @@ async function submitOtp() {
         }
       })
     } else if (purpose.value === 'forgot_password') {
-      router.push({ name: 'forgot-password', query: { step: 'confirm', email: email.value, token, code } })
+      router.push({ name: 'forgot-password', query: { step: 'confirm', email: email.value, token } })
     }
   } catch (error) {
     errorMessage.value = getAuthErrorMessage(error, 'Mã OTP không hợp lệ hoặc đã hết hạn.')

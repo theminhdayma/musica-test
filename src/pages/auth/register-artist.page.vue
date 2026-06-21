@@ -10,14 +10,23 @@ const auth = useAuthStore()
 const email = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function submitEmail() {
-  if (!email.value.trim()) return
+  const normalizedEmail = email.value.trim().toLowerCase()
+  if (!normalizedEmail) {
+    errorMessage.value = 'Vui lòng nhập email để tiếp tục.'
+    return
+  }
+  if (!EMAIL_PATTERN.test(normalizedEmail)) {
+    errorMessage.value = 'Email không đúng định dạng.'
+    return
+  }
   errorMessage.value = null
   submitting.value = true
   try {
-    await auth.requestOtp(email.value.trim(), 'signup_artist')
-    router.push({ name: 'otp', query: { purpose: 'signup_artist', email: email.value.trim(), role: 'ARTIST' } })
+    await auth.requestOtp(normalizedEmail, 'signup_artist')
+    router.push({ name: 'otp', query: { purpose: 'signup_artist', email: normalizedEmail, role: 'ARTIST' } })
   } catch (error) {
     errorMessage.value = getAuthErrorMessage(error, 'Không thể gửi mã OTP. Vui lòng thử lại.')
   } finally {

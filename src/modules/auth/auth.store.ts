@@ -150,7 +150,7 @@ export const useAuthStore = defineStore('auth', {
         await requestOtpApi({ email, purpose })
         this.pendingOtpChallenge = { email, purpose }
         if (purpose === 'forgot_password') {
-          this.pendingForgotPassword = { email }
+          this.pendingForgotPassword = { email, verificationToken: null }
         } else {
           this.selectedRole = purpose === 'signup_artist' ? 'ARTIST' : 'BUYER'
         }
@@ -178,6 +178,12 @@ export const useAuthStore = defineStore('auth', {
         })
 
         this.pendingOtpChallenge = activeChallenge
+        if (activeChallenge.purpose === 'forgot_password') {
+          this.pendingForgotPassword = {
+            email: activeChallenge.email,
+            verificationToken: res.data.verificationToken
+          }
+        }
         this.syncPersisted()
         return res.data.verificationToken
       } catch (error) {
@@ -292,10 +298,14 @@ export const useAuthStore = defineStore('auth', {
         this.loadingStates.forgotPassword = false
       }
     },
-    async confirmForgotPassword(input: { email?: string; code: string; newPassword: string }) {
+    async confirmForgotPassword(input: { email?: string; verificationToken?: string; newPassword: string }) {
       const email = input.email || this.pendingForgotPassword?.email || this.pendingOtpChallenge?.email
       if (!email) {
         throw new Error('Không xác định được email để đặt lại mật khẩu.')
+      }
+      const verificationToken = input.verificationToken || this.pendingForgotPassword?.verificationToken
+      if (!verificationToken) {
+        throw new Error('Không tìm thấy xác nhận OTP hợp lệ để đặt lại mật khẩu.')
       }
 
       this.clearError()
@@ -303,7 +313,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         await forgotPasswordConfirmApi({
           email,
-          code: input.code,
+          verificationToken,
           newPassword: input.newPassword
         })
         this.pendingForgotPassword = null

@@ -31,6 +31,10 @@ function readFirebaseConfig(): FirebaseClientConfig | null {
   }
 }
 
+function looksLikeJwtToken(value: unknown): value is string {
+  return typeof value === 'string' && value.split('.').length === 3
+}
+
 function getFirebaseAppInstance() {
   const config = readFirebaseConfig()
 
@@ -64,7 +68,25 @@ export async function getFirebaseIdTokenFromGoogle() {
     provider.setCustomParameters({ prompt: 'select_account' })
 
     const result = await signInWithPopup(auth, provider)
-    const idToken = await result.user.getIdToken(true)
+
+    let idTokenFromMethod: string | null = null
+    const userWithTokenMethod = result.user as { getIdToken?: (forceRefresh?: boolean) => Promise<string> }
+    if (typeof userWithTokenMethod.getIdToken === 'function') {
+      try {
+        idTokenFromMethod = await userWithTokenMethod.getIdToken(true)
+      } catch {
+        idTokenFromMethod = null
+      }
+    }
+
+    const tokenCandidates = [
+      { source: 'user.getIdToken', token: idTokenFromMethod },
+      { source: 'user.accessToken', token: (result.user as { accessToken?: unknown }).accessToken },
+      { source: 'credential._tokenResponse.idToken', token: (result as { _tokenResponse?: { idToken?: unknown } })._tokenResponse?.idToken }
+    ]
+
+    const selectedTokenCandidate = tokenCandidates.find(candidate => looksLikeJwtToken(candidate.token))
+    const idToken = selectedTokenCandidate?.token ?? null
 
     await signOut(auth)
 

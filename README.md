@@ -49,6 +49,9 @@ Mọi API response follow chuẩn envelope `success/data/meta/requestId/timestam
   - `POST /client/auth/forgot-password/confirm`
   - `GET /me`
 - Sau mọi login/register thành công, store sẽ hydrate `GET /me`.
+- Forgot-password flow hiện chạy theo 2 bước:
+  - `POST /client/auth/otp/verify` trả `verificationToken`
+  - `POST /client/auth/forgot-password/confirm` dùng `verificationToken` để đặt mật khẩu mới
 - Google flow dùng Firebase Web SDK để lấy `firebaseIdToken`, sau đó gọi `POST /client/auth/login/google`.
 - Nếu thiếu biến môi trường Firebase, các nút Google sẽ hiện trạng thái chưa cấu hình thay vì giả lập token.
 
@@ -67,6 +70,10 @@ Mọi API response follow chuẩn envelope `success/data/meta/requestId/timestam
   - account tạo bằng Google không được login password
   - account tạo bằng password không được login Google
 - Artist chỉ hỗ trợ email/password, không hỗ trợ Google.
+- Signup bằng email/password bị chặn ngay từ bước request OTP nếu email đã tồn tại.
+- Forgot password chỉ áp dụng cho account `password`:
+  - email không tồn tại -> backend trả lỗi rõ
+  - account Google -> backend trả lỗi rõ, FE không được chuyển sang màn OTP
 - Sau login thành công, cả Buyer và Artist tạm thời đều điều hướng về trang `home`.
 - Lưu ý: Google client cần các biến môi trường sau để chạy flow thật:
   - `VITE_FIREBASE_API_KEY`
@@ -92,7 +99,10 @@ npm run dev
 Checklist test auth local:
 - Buyer email flow: request OTP -> verify OTP -> register buyer -> login password
 - Artist email flow: request OTP -> verify OTP -> register artist -> login password
-- Forgot password: request OTP -> confirm new password cho account password
+- Duplicate email signup: nhập email đã tồn tại ở buyer/artist -> bị chặn ngay ở bước request OTP
+- Forgot password/password account: request OTP -> verify OTP -> confirm bằng `verificationToken` -> login bằng mật khẩu mới
+- Forgot password/google account: nhập email account Google -> hiển thị lỗi, không được sang màn OTP
+- Forgot password/email không tồn tại: hiển thị lỗi, không được sang màn OTP
 - Buyer Google flow: vào `/auth/login` hoặc `/auth/register/buyer` -> bấm Google -> popup Google -> backend trả JWT -> frontend hydrate `/me`
 - Artist Google policy: UI không cung cấp Google ở màn artist; nếu cố gọi backend bằng account artist sẽ bị chặn theo policy backend
 

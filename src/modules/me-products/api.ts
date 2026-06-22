@@ -17,6 +17,11 @@ type ApiProduct = {
   description?: string | null
 }
 
+type SignedUploadUrlData = {
+  uploadUrl: string
+  fileKey: string
+}
+
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const totalItems = items.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -149,5 +154,120 @@ export async function createMyProduct(input: {
   })
   const data: MyProductDetail = { ...mapApiProduct(res.data), description: res.data.description ?? undefined }
   return { data }
+}
+
+export async function getMyProductOriginalUploadUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/audio',
+        fileKey: `audio/product/${productId}/original.mp3`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/original-upload-url`,
+    method: 'POST'
+  })
+}
+
+export async function getMyProductThumbnailUploadUrl(productId: string, input: { extension: 'png' | 'jpg' | 'jpeg' | 'webp' }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/thumbnail',
+        fileKey: `image/product/${productId}/thumbnail.${input.extension}`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/thumbnail-upload-url`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function getMyProductSheetMusicUploadUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/sheet-music',
+        fileKey: `document/product/${productId}/sheet.pdf`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/sheet-music-upload-url`,
+    method: 'POST'
+  })
+}
+
+export async function confirmMyProductAudioUpload(productId: string, input: { mode: 'original'; fileKey: string }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-audio-upload`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function confirmMyProductThumbnailUpload(productId: string, input: { fileKey: string }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-thumbnail-upload`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function confirmMyProductSheetMusicUpload(productId: string, input: { fileKey: string }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-sheet-music-upload`,
+    method: 'POST',
+    body: input
+  })
 }
 

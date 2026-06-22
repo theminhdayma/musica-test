@@ -7,7 +7,16 @@ import { ApiError } from '../../shared/api/errors'
 import { useAsyncResource } from '../../shared/lib/useAsyncResource'
 import ErrorState from '../../shared/ui/states/ErrorState.vue'
 import SkeletonCard from '../../shared/ui/skeleton/SkeletonCard.vue'
-import { createMyProduct, listMyProducts } from '../../modules/me-products/api'
+import {
+  confirmMyProductAudioUpload,
+  confirmMyProductSheetMusicUpload,
+  confirmMyProductThumbnailUpload,
+  createMyProduct,
+  getMyProductOriginalUploadUrl,
+  getMyProductSheetMusicUploadUrl,
+  getMyProductThumbnailUploadUrl,
+  listMyProducts
+} from '../../modules/me-products/api'
 
 const router = useRouter()
 const page = ref(1)
@@ -21,6 +30,11 @@ const filters = reactive({
 const createOpen = ref(false)
 const createError = ref<string | null>(null)
 const isCreating = ref(false)
+const createOriginalFile = ref<File | null>(null)
+const createThumbnailFile = ref<File | null>(null)
+const createSheetMusicFile = ref<File | null>(null)
+const createOriginalAudioUrl = ref<string | null>(null)
+const createThumbnailUrl = ref<string | null>(null)
 const createForm = reactive({
   title: '',
   authorName: '',
@@ -55,6 +69,129 @@ const PRODUCT_USE_CASE_OPTIONS = [
 const toggleSelection = <TValue extends string>(current: TValue[], value: TValue) =>
   current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
 
+const revokeObjectUrl = (url: string | null) => {
+  if (url) URL.revokeObjectURL(url)
+}
+
+const resetCreateForm = () => {
+  createForm.title = ''
+  createForm.authorName = ''
+  createForm.duration = ''
+  createForm.description = ''
+  createForm.genres = []
+  createForm.useCases = []
+  createOriginalFile.value = null
+  createThumbnailFile.value = null
+  createSheetMusicFile.value = null
+  revokeObjectUrl(createOriginalAudioUrl.value)
+  revokeObjectUrl(createThumbnailUrl.value)
+  createOriginalAudioUrl.value = null
+  createThumbnailUrl.value = null
+}
+
+const extractEventFile = (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  return target?.files?.[0] ?? null
+}
+
+function ensureAudioFile(file: File, label: string) {
+  const normalizedName = file.name.toLowerCase()
+  if (!file.type.startsWith('audio/') && !normalizedName.endsWith('.mp3')) {
+    throw new Error(`${label} phải là file audio hợp lệ`)
+  }
+}
+
+function ensurePdfFile(file: File, label: string) {
+  const normalizedName = file.name.toLowerCase()
+  if (file.type !== 'application/pdf' && !normalizedName.endsWith('.pdf')) {
+    throw new Error(`${label} phải là file PDF`)
+  }
+}
+
+function ensureThumbnailFile(file: File, label: string): 'png' | 'jpg' | 'jpeg' | 'webp' {
+  const normalizedName = file.name.toLowerCase()
+  const byMime =
+    file.type === 'image/png'
+      ? 'png'
+      : file.type === 'image/jpeg'
+        ? normalizedName.endsWith('.jpeg')
+          ? 'jpeg'
+          : 'jpg'
+        : file.type === 'image/webp'
+          ? 'webp'
+          : null
+  const byName = normalizedName.endsWith('.png')
+    ? 'png'
+    : normalizedName.endsWith('.jpeg')
+      ? 'jpeg'
+      : normalizedName.endsWith('.jpg')
+        ? 'jpg'
+        : normalizedName.endsWith('.webp')
+          ? 'webp'
+          : null
+  const extension = byMime ?? byName
+  if (!extension) {
+    throw new Error(`${label} phải là png, jpg, jpeg hoặc webp`)
+  }
+  return extension
+}
+
+async function readAudioDuration(file: File) {
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const duration = await new Promise<number>((resolve, reject) => {
+      const audio = document.createElement('audio')
+      audio.preload = 'metadata'
+      audio.src = objectUrl
+      audio.onloadedmetadata = () => resolve(audio.duration)
+      audio.onerror = () => reject(new Error('Không đọc được thời lượng từ file audio'))
+    })
+    if (!Number.isFinite(duration)) {
+      throw new Error('Không đọc được thời lượng từ file audio')
+    }
+    return Math.max(0, Math.round(duration))
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+async function uploadToSignedUrl(url: string, file: File) {
+  if (url.startsWith('mock://')) return
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'true'
+    },
+    body: file
+  })
+  if (response.ok) return
+  const responseText = (await response.text().catch(() => '')).slice(0, 200)
+  const detail = responseText.length > 0 ? `: ${responseText}` : ''
+  throw new Error(`Tải file lên thất bại (${response.status} ${response.statusText})${detail}`)
+}
+
+async function uploadTrackAudioFile(productId: string, file: File) {
+  ensureAudioFile(file, 'Audio gốc')
+  const { data } = await getMyProductOriginalUploadUrl(productId)
+  await uploadToSignedUrl(data.uploadUrl, file)
+  await confirmMyProductAudioUpload(productId, { mode: 'original', fileKey: data.fileKey })
+}
+
+async function uploadTrackThumbnailFile(productId: string, file: File) {
+  const extension = ensureThumbnailFile(file, 'Thumbnail')
+  const { data } = await getMyProductThumbnailUploadUrl(productId, { extension })
+  await uploadToSignedUrl(data.uploadUrl, file)
+  await confirmMyProductThumbnailUpload(productId, { fileKey: data.fileKey })
+}
+
+async function uploadTrackSheetMusicFile(productId: string, file: File) {
+  ensurePdfFile(file, 'Khuông nhạc')
+  const { data } = await getMyProductSheetMusicUploadUrl(productId)
+  await uploadToSignedUrl(data.uploadUrl, file)
+  await confirmMyProductSheetMusicUpload(productId, { fileKey: data.fileKey })
+}
+
 const resource = useAsyncResource(async () => {
   const q = filters.keyword.trim() || undefined
   const status = filters.status === 'ALL' ? undefined : filters.status
@@ -82,6 +219,7 @@ function reload() {
 
 function openCreateDialog() {
   createError.value = null
+  resetCreateForm()
   createOpen.value = true
 }
 
@@ -90,6 +228,14 @@ async function submitCreate() {
   const title = createForm.title.trim()
   if (!title) {
     createError.value = 'Vui lòng nhập tên sản phẩm'
+    return
+  }
+  if (!createThumbnailFile.value) {
+    createError.value = 'Cần chọn thumbnail cho sản phẩm'
+    return
+  }
+  if (!createOriginalFile.value) {
+    createError.value = 'Cần chọn file MP3 gốc khi tạo sản phẩm'
     return
   }
 
@@ -110,13 +256,22 @@ async function submitCreate() {
       genres: createForm.genres.length ? [...createForm.genres] : undefined,
       useCases: createForm.useCases.length ? [...createForm.useCases] : undefined
     })
+    const jobs: Array<() => Promise<unknown>> = [
+      () => uploadTrackThumbnailFile(res.data.id, createThumbnailFile.value as File),
+      () => uploadTrackAudioFile(res.data.id, createOriginalFile.value as File)
+    ]
+    if (createSheetMusicFile.value) {
+      const sheetMusicFile = createSheetMusicFile.value
+      jobs.push(() => uploadTrackSheetMusicFile(res.data.id, sheetMusicFile))
+    }
+    const results = await Promise.allSettled(jobs.map((job) => job()))
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (rejected) {
+      throw new Error(`Sản phẩm đã được tạo nhưng upload file thất bại. ${rejected.reason instanceof Error ? rejected.reason.message : String(rejected.reason)}`)
+    }
     createOpen.value = false
-    createForm.title = ''
-    createForm.authorName = ''
-    createForm.duration = ''
-    createForm.description = ''
-    createForm.genres = []
-    createForm.useCases = []
+    resetCreateForm()
+    await resource.run()
     await router.push({ name: 'my-product-detail', params: { productId: res.data.id } })
   } catch (e) {
     createError.value = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Không thể tạo sản phẩm'
@@ -142,6 +297,65 @@ function formatDuration(value?: number | null) {
 function resolveGenresDisplay(genres?: string[]) {
   if (!genres || genres.length === 0) return '—'
   return genres.join(', ')
+}
+
+function setCreateThumbnailPreviewUrl(file: File | null) {
+  revokeObjectUrl(createThumbnailUrl.value)
+  createThumbnailUrl.value = file ? URL.createObjectURL(file) : null
+}
+
+function setCreateOriginalPreviewUrl(file: File | null) {
+  revokeObjectUrl(createOriginalAudioUrl.value)
+  createOriginalAudioUrl.value = file ? URL.createObjectURL(file) : null
+}
+
+function handleCreateThumbnailFileChange(event: Event) {
+  createError.value = null
+  const file = extractEventFile(event)
+  createThumbnailFile.value = file
+  setCreateThumbnailPreviewUrl(file)
+  if (!file) return
+  try {
+    ensureThumbnailFile(file, 'Thumbnail')
+  } catch (error) {
+    createThumbnailFile.value = null
+    setCreateThumbnailPreviewUrl(null)
+    createError.value = error instanceof Error ? error.message : 'Thumbnail không hợp lệ'
+  }
+}
+
+async function handleCreateAudioFileChange(event: Event) {
+  createError.value = null
+  const file = extractEventFile(event)
+  createOriginalFile.value = file
+  setCreateOriginalPreviewUrl(file)
+  if (!file) {
+    createForm.duration = ''
+    return
+  }
+  try {
+    ensureAudioFile(file, 'Audio gốc')
+    const duration = await readAudioDuration(file)
+    createForm.duration = String(duration)
+  } catch (error) {
+    createOriginalFile.value = null
+    setCreateOriginalPreviewUrl(null)
+    createForm.duration = ''
+    createError.value = error instanceof Error ? error.message : 'Audio không hợp lệ'
+  }
+}
+
+function handleCreateSheetMusicFileChange(event: Event) {
+  createError.value = null
+  const file = extractEventFile(event)
+  createSheetMusicFile.value = file
+  if (!file) return
+  try {
+    ensurePdfFile(file, 'Khuông nhạc')
+  } catch (error) {
+    createSheetMusicFile.value = null
+    createError.value = error instanceof Error ? error.message : 'PDF không hợp lệ'
+  }
 }
 
 function prev() {
@@ -486,15 +700,99 @@ onMounted(() => {
 
         <section class="space-y-4 rounded-[28px] border bg-[color:var(--admin-surface-1)] p-4 sm:p-5 [border-color:var(--admin-border)]">
           <div class="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
-            <i class="pi pi-info-circle text-[color:var(--admin-primary-500)]" />
-            Lưu ý
+            <i class="pi pi-image text-[color:var(--admin-primary-500)]" />
+            Thumbnail
           </div>
-          <div class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
-            <div class="text-sm font-semibold text-[color:var(--admin-text)]">Trạng thái</div>
-            <div class="mt-2 text-sm" style="color: var(--admin-text-muted)">
-              Sản phẩm tạo mới sẽ ở trạng thái PENDING và chờ admin duyệt. Upload file sẽ thực hiện ở trang chi tiết.
+
+          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-[color:var(--admin-text)]">Ảnh đại diện</div>
+              <span
+                v-if="createThumbnailFile"
+                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
+              >
+                {{ createThumbnailFile.name }}
+              </span>
             </div>
+            <div class="mt-4">
+              <input
+                type="file"
+                accept="image/*,.png,.jpg,.jpeg,.webp"
+                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
+                @change="handleCreateThumbnailFileChange"
+              />
+            </div>
+            <div class="mt-4 overflow-hidden rounded-lg border border-dashed bg-[color:var(--admin-surface-1)] p-4 [border-color:var(--admin-border)]">
+              <img v-if="createThumbnailUrl" :src="createThumbnailUrl" alt="" class="h-40 w-full rounded-lg object-cover" />
+              <div v-else class="flex h-40 items-center justify-center text-sm text-[color:var(--admin-text-muted)]">Chưa chọn thumbnail</div>
+            </div>
+          </article>
+
+          <div class="flex items-center gap-3 pt-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
+            <i class="pi pi-volume-up text-[color:var(--admin-primary-500)]" />
+            Audio gốc
           </div>
+
+          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-[color:var(--admin-text)]">File MP3 gốc</div>
+              <span
+                v-if="createOriginalFile"
+                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
+              >
+                {{ createOriginalFile.name }}
+              </span>
+            </div>
+            <div class="mt-4">
+              <input
+                type="file"
+                accept=".mp3,audio/*"
+                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
+                @change="handleCreateAudioFileChange"
+              />
+            </div>
+            <div class="mt-4">
+              <audio v-if="createOriginalAudioUrl" :src="createOriginalAudioUrl" controls class="w-full" />
+              <div v-else class="text-sm text-[color:var(--admin-text-muted)]">Chưa chọn audio</div>
+            </div>
+          </article>
+
+          <div class="flex items-center gap-3 pt-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
+            <i class="pi pi-file-pdf text-[color:var(--admin-primary-500)]" />
+            Khuông nhạc (PDF)
+          </div>
+
+          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-[color:var(--admin-text)]">File PDF</div>
+              <span
+                v-if="createSheetMusicFile"
+                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
+              >
+                {{ createSheetMusicFile.name }}
+              </span>
+            </div>
+            <div class="mt-4">
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
+                @change="handleCreateSheetMusicFileChange"
+              />
+            </div>
+          </article>
+
+          <label class="block space-y-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thời lượng (giây)</span>
+            <input
+              v-model="createForm.duration"
+              readonly
+              class="h-10 w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 text-sm text-[color:var(--admin-text)] outline-none transition [border-color:var(--admin-border)]"
+            />
+            <span class="text-xs text-[color:var(--admin-text-muted)]">
+              {{ createForm.duration ? `≈ ${formatDuration(Number(createForm.duration))}` : 'Chọn file audio để tự đọc thời lượng.' }}
+            </span>
+          </label>
         </section>
       </div>
 

@@ -2,10 +2,9 @@ import type { PaginationMeta } from '../../shared/api/contracts'
 
 export type MyProductListItem = {
   id: string
-  productCode: string
   title: string
   thumbnailUrl: string | null
-  status: string
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
   createdAt: string
 }
 

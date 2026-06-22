@@ -3,6 +3,14 @@ import { apiRequest, getApiBaseUrl } from '../../shared/api/http'
 import { mockFlags } from '../../shared/api/mockFlags'
 import type { MyProductDetail, MyProductsListMeta, MyProductsListResponse } from './types'
 
+type ApiProduct = {
+  id: string
+  title: string
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
+  createdAt: string
+  description?: string | null
+}
+
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const totalItems = items.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -25,11 +33,22 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
 function mapMyProduct(p: any) {
   return {
     id: p.id,
-    productCode: p.isrc ? String(p.isrc) : `PROD-${String(p.id).slice(0, 6).padStart(6, '0')}`,
     title: p.title,
     thumbnailUrl: p.cover || null,
-    status: 'PUBLISHED',
+    status: 'PENDING',
     createdAt: new Date().toISOString()
+  }
+}
+
+let mockMyProducts = (mockProducts as any[]).map(mapMyProduct)
+
+function mapApiProduct(p: ApiProduct) {
+  return {
+    id: p.id,
+    title: p.title,
+    thumbnailUrl: null,
+    status: p.status,
+    createdAt: p.createdAt
   }
 }
 
@@ -41,7 +60,7 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
     const page = input.page || 1
     const pageSize = input.pageSize || 20
     const q = (input.q || '').trim().toLowerCase()
-    const items = (mockProducts as any[]).filter(p => !q || String(p.title || '').toLowerCase().includes(q)).map(mapMyProduct)
+    const items = (mockMyProducts as any[]).filter(p => !q || String(p.title || '').toLowerCase().includes(q))
     const { slice, meta } = paginate(items, page, pageSize)
     const data: MyProductsListResponse = { items: slice }
     return { data, meta }
@@ -52,7 +71,8 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
     method: 'GET',
     query: input
   })
-  return { data: res.data, meta: res.meta }
+  const data: MyProductsListResponse = { items: (res.data.items as any[]).map(mapApiProduct) }
+  return { data, meta: res.meta }
 }
 
 export async function getMyProductDetail(productId: string) {
@@ -60,13 +80,50 @@ export async function getMyProductDetail(productId: string) {
   const shouldMock = mockFlags.meProducts || !baseUrl
 
   if (shouldMock) {
-    const found = (mockProducts as any[]).find(p => p.id === productId)
+    const found = (mockMyProducts as any[]).find(p => p.id === productId)
     if (!found) throw new Error('NOT_FOUND')
-    const data: MyProductDetail = { ...mapMyProduct(found), description: found.description }
+    const data: MyProductDetail = { ...found, description: (found as any).description }
     return { data }
   }
 
-  const res = await apiRequest<MyProductDetail>({ path: `/me/products/${productId}`, method: 'GET' })
-  return { data: res.data }
+  const res = await apiRequest<ApiProduct>({ path: `/me/products/${productId}`, method: 'GET' })
+  const data: MyProductDetail = { ...mapApiProduct(res.data), description: res.data.description ?? undefined }
+  return { data }
+}
+
+export async function createMyProduct(input: {
+  title: string
+  authorName?: string
+  genre?: string
+  genres?: string[]
+  useCase?: string
+  useCases?: string[]
+  description?: string
+  duration?: number
+}) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const now = new Date().toISOString()
+    const created: MyProductDetail = {
+      id: `mock_${Math.random().toString(36).slice(2)}`,
+      title: input.title,
+      thumbnailUrl: null,
+      status: 'PENDING',
+      createdAt: now,
+      description: input.description
+    }
+    mockMyProducts = [created, ...mockMyProducts]
+    return { data: created }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: '/me/products',
+    method: 'POST',
+    body: input
+  })
+  const data: MyProductDetail = { ...mapApiProduct(res.data), description: res.data.description ?? undefined }
+  return { data }
 }
 

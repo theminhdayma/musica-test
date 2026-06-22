@@ -53,7 +53,7 @@ onMounted(() => {
 
       <div v-else-if="item" class="card">
         <h1 style="margin: 0 0 6px;">{{ item.title }}</h1>
-        <div class="muted">{{ item.productCode }} · {{ item.status }}</div>
+        <div class="muted">{{ item.status }} · {{ item.id.slice(0, 8) }}</div>
         <div class="muted" style="margin-top: 12px; line-height: 1.7;">{{ item.description }}</div>
       </div>
     </div>

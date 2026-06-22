@@ -6,8 +6,14 @@ import type { MyProductDetail, MyProductsListMeta, MyProductsListResponse } from
 type ApiProduct = {
   id: string
   title: string
+  artistId?: string
+  authorName?: string | null
+  genres?: string[]
+  useCases?: string[]
+  duration?: number | null
   status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
   createdAt: string
+  updatedAt?: string
   description?: string | null
 }
 
@@ -36,7 +42,13 @@ function mapMyProduct(p: any) {
     title: p.title,
     thumbnailUrl: p.cover || null,
     status: 'PENDING',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    artistId: 'me',
+    authorName: p.authorName || null,
+    genres: Array.isArray(p.genres) ? p.genres : [],
+    useCases: Array.isArray(p.useCases) ? p.useCases : [],
+    duration: typeof p.duration === 'number' ? p.duration : null
   }
 }
 
@@ -48,7 +60,13 @@ function mapApiProduct(p: ApiProduct) {
     title: p.title,
     thumbnailUrl: null,
     status: p.status,
-    createdAt: p.createdAt
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt ?? p.createdAt,
+    artistId: p.artistId ?? '',
+    authorName: p.authorName ?? null,
+    genres: Array.isArray(p.genres) ? p.genres : [],
+    useCases: Array.isArray(p.useCases) ? p.useCases : [],
+    duration: typeof p.duration === 'number' ? p.duration : null
   }
 }
 
@@ -112,6 +130,12 @@ export async function createMyProduct(input: {
       thumbnailUrl: null,
       status: 'PENDING',
       createdAt: now,
+      updatedAt: now,
+      artistId: 'me',
+      authorName: input.authorName ?? null,
+      genres: input.genres ?? (input.genre ? [input.genre] : []),
+      useCases: input.useCases ?? (input.useCase ? [input.useCase] : []),
+      duration: typeof input.duration === 'number' ? input.duration : null,
       description: input.description
     }
     mockMyProducts = [created, ...mockMyProducts]

@@ -1,5 +1,8 @@
 import { ViteSSG } from 'vite-ssg'
 import { createPinia } from 'pinia'
+import PrimeVue from 'primevue/config'
+import ConfirmationService from 'primevue/confirmationservice'
+import Aura from '@primevue/themes/aura'
 import App from './App.vue'
 import { routes } from './router'
 import { ApiError } from './shared/api/errors'
@@ -7,6 +10,8 @@ import { setAccessTokenGetter } from './shared/api/http'
 import { useAuthStore } from './modules/auth/auth.store'
 import { installRouterGuards } from './app/routerGuards'
 import './styles/main.css'
+import './styles/admin-vars.css'
+import 'primeicons/primeicons.css'
 
 export const createApp = ViteSSG(
   App,
@@ -14,6 +19,15 @@ export const createApp = ViteSSG(
   ({ app, router }) => {
     const pinia = createPinia()
     app.use(pinia)
+    app.use(PrimeVue, {
+      theme: {
+        preset: Aura,
+        options: {
+          darkModeSelector: '.app-dark'
+        }
+      }
+    })
+    app.use(ConfirmationService)
 
     const auth = useAuthStore(pinia)
     setAccessTokenGetter(() => auth.accessToken)

@@ -6,6 +6,12 @@ export type MyProductListItem = {
   thumbnailUrl: string | null
   status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
   createdAt: string
+  updatedAt: string
+  artistId: string
+  authorName: string | null
+  genres: string[]
+  useCases: string[]
+  duration: number | null
 }
 
 export type MyProductsListResponse = { items: MyProductListItem[] }

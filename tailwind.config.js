@@ -7,6 +7,18 @@ export default {
   theme: {
     extend: {
       colors: {
+        "background": "#f8f9ff",
+        "foreground": "#0a1c31",
+        "border": "#e3edf6",
+        "input": "#e3edf6",
+        "ring": "#0055c8",
+        "muted": "#eef4fa",
+        "muted-foreground": "#7c8da3",
+        "destructive": "#ba1a1a",
+        "primary-foreground": "#ffffff",
+        "secondary-foreground": "#ffffff",
+        "card": "#ffffff",
+        "card-foreground": "#0a1c31",
         "border-strong": "#cfdfee",
         "border-light": "#e3edf6",
         "text-mute": "#7c8da3",
@@ -16,7 +28,6 @@ export default {
         "primary": "#0055c8",
         "secondary": "#006b5f",
         "tertiary": "#006383",
-        "background": "#f8f9ff",
         "surface": "#f8f9ff",
         "surface-container-lowest": "#ffffff",
         "surface-container-low": "#eff4ff",

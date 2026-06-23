@@ -19,8 +19,9 @@ export async function apiRequest<TData, TMeta = undefined>(input: {
   query?: Record<string, string | number | boolean | undefined | null>
   body?: unknown
   headers?: Record<string, string | undefined>
+  baseUrlOverride?: string
 }): Promise<{ data: TData; meta?: TMeta; requestId: string; timestamp: string }> {
-  const baseUrl = getApiBaseUrl().replace(/\/$/, '')
+  const baseUrl = (input.baseUrlOverride ?? getApiBaseUrl()).replace(/\/$/, '')
   const url = new URL(baseUrl + input.path)
 
   if (input.query) {

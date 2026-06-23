@@ -376,7 +376,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container section">
+  <div class="artist-scope container section">
     <div class="flex min-w-0 flex-col gap-4 pb-8 sm:gap-5 lg:gap-6">
       <section class="rounded-2xl border p-4 sm:p-5" style="border-color: var(--admin-border); background: var(--admin-surface-0); box-shadow: var(--admin-elev-1)">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -541,17 +541,18 @@ onMounted(() => {
                   <th class="px-4 py-3">Duration</th>
                   <th class="px-4 py-3">Status</th>
                   <th class="px-4 py-3 text-right">Cập nhật</th>
+                  <th class="px-4 py-3 text-center">Xem</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="resource.status.value === 'loading' || resource.status.value === 'idle'" v-for="i in 8" :key="`sk-${i}`" class="border-b" style="border-color: var(--admin-border)">
-                  <td class="px-4 py-3" colspan="5">
+                  <td class="px-4 py-3" colspan="6">
                     <SkeletonCard />
                   </td>
                 </tr>
 
                 <tr v-else-if="items.length === 0" class="border-b" style="border-color: var(--admin-border)">
-                  <td class="px-4 py-10 text-center text-sm" colspan="5" style="color: var(--admin-text-muted)">
+                  <td class="px-4 py-10 text-center text-sm" colspan="6" style="color: var(--admin-text-muted)">
                     Không có sản phẩm phù hợp.
                   </td>
                 </tr>
@@ -575,6 +576,17 @@ onMounted(() => {
                     </span>
                   </td>
                   <td class="px-4 py-3 text-right text-xs" style="color: var(--admin-text-muted)">{{ formatDateTime(track.updatedAt || track.createdAt) }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <RouterLink
+                      class="inline-flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-[color:var(--admin-surface-1)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1"
+                      style="border-color: var(--admin-border); background: var(--admin-surface-0); color: var(--admin-primary-600)"
+                      :to="{ name: 'my-product-detail', params: { productId: track.id } }"
+                      title="Xem chi tiết"
+                      aria-label="Xem chi tiết"
+                    >
+                      <i class="pi pi-eye" />
+                    </RouterLink>
+                  </td>
                 </tr>
               </tbody>
             </table>

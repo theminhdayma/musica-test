@@ -35,7 +35,16 @@ export const routes = [
   { path: '/me/certificates', name: 'my-certificates', component: () => import('../pages/certificates/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/certificates/:certificateId', name: 'certificate-detail', component: () => import('../pages/certificates/detail.page.vue'), props: true, meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/products', name: 'my-products', component: () => import('../pages/me-products/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
-  { path: '/me/products/:productId', name: 'my-product-detail', component: () => import('../pages/me-products/detail.page.vue'), props: true, meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } }
+  { 
+    path: '/me/products/:productId/:section?', 
+    name: 'my-product-detail', 
+    component: () => import('../pages/me-products/detail.page.vue'),
+    props: (route) => ({
+      productId: String(route.params.productId || ''),
+      section: String(route.params.section || ''),
+    }),
+    meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } 
+  }
 ]
 
 export function createAppRouter() {

@@ -15,6 +15,10 @@ type ApiProduct = {
   createdAt: string
   updatedAt?: string
   description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
 }
 
 type SignedUploadUrlData = {
@@ -61,6 +65,7 @@ let mockMyProducts = (mockProducts as any[]).map(mapMyProduct)
 
 function mapApiProduct(p: ApiProduct) {
   return {
+    ...p,
     id: p.id,
     title: p.title,
     thumbnailUrl: null,
@@ -271,3 +276,98 @@ export async function confirmMyProductSheetMusicUpload(productId: string, input:
   })
 }
 
+export async function updateMyProduct(
+  productId: string,
+  input: {
+    title?: string
+    authorName?: string
+    genres?: string[]
+    useCases?: string[]
+    description?: string
+    duration?: number
+  },
+) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = {
+        ...mockMyProducts[index],
+        ...input,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: `/me/products/${productId}`,
+    method: 'PATCH',
+    body: input,
+  })
+  return { data: mapApiProduct(res.data) }
+}
+
+export async function replaceMyProductAllowedPermissions(productId: string, permissionIds: string[]) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/allowed-permissions`,
+    method: 'PUT',
+    body: { permissionIds },
+  })
+  return { data: mapApiProduct(res.data) }
+}
+
+export async function getMyProductThumbnailUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { thumbnailUrl: '' } }
+  }
+
+  return apiRequest<{ thumbnailUrl: string }>({
+    path: `/me/products/${productId}/thumbnail-url`,
+    method: 'GET',
+  })
+}
+
+export async function getMyProductOriginalPlaybackUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { playbackUrl: '' } }
+  }
+
+  return apiRequest<{ playbackUrl: string }>({
+    path: `/me/products/${productId}/original-playback-url`,
+    method: 'GET',
+  })
+}
+
+export async function getMyProductSheetMusicUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { sheetMusicUrl: '' } }
+  }
+
+  return apiRequest<{ sheetMusicUrl: string }>({
+    path: `/me/products/${productId}/sheet-music-url`,
+    method: 'GET',
+  })
+}

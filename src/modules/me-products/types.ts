@@ -18,6 +18,10 @@ export type MyProductsListResponse = { items: MyProductListItem[] }
 export type MyProductsListMeta = PaginationMeta
 
 export type MyProductDetail = MyProductListItem & {
-  description?: string
+  description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
 }
 

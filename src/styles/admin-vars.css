@@ -92,3 +92,37 @@
     0 8px 20px rgb(var(--admin-primary-rgb) / 0.15);
 }
 
+.artist-scope {
+  --admin-ring: rgb(14 165 233 / 0.2);
+
+  --admin-primary-rgb: 14 165 233;
+  --admin-primary-core: #0ea5e9;
+  --admin-primary-50: #e0f2fe;
+  --admin-primary-100: #bae6fd;
+  --admin-primary-200: #7dd3fc;
+  --admin-primary-300: #38bdf8;
+  --admin-primary-400: #0ea5e9;
+  --admin-primary-500: #0ea5e9;
+  --admin-primary-600: #0284c7;
+  --admin-primary-700: #0369a1;
+  --admin-primary-800: #075985;
+  --admin-primary-900: #0c4a6e;
+
+  --admin-accent-rgb: 20 184 166;
+  --admin-accent-core: #14b8a6;
+  --admin-accent-50: #f0fdfa;
+  --admin-accent-100: #ccfbf1;
+  --admin-accent-200: #99f6e4;
+  --admin-accent-300: #5eead4;
+  --admin-accent-400: #2dd4bf;
+  --admin-accent-500: #14b8a6;
+  --admin-accent-600: #0d9488;
+  --admin-accent-700: #0f766e;
+
+  --admin-brand-gradient-start: #0ea5e9;
+  --admin-brand-gradient-end: #38bdf8;
+  --admin-shell-spotlight-primary: rgb(14 165 233 / 0.05);
+  --admin-shell-spotlight-accent: rgb(20 184 166 / 0.05);
+
+  --admin-sidebar-active-bg: #0ea5e9;
+}

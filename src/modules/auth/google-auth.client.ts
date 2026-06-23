@@ -1,5 +1,3 @@
-import { initializeApp, getApp, getApps } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
 import { ApiError } from '../../shared/api/errors'
 
 type FirebaseClientConfig = {
@@ -35,7 +33,34 @@ function looksLikeJwtToken(value: unknown): value is string {
   return typeof value === 'string' && value.split('.').length === 3
 }
 
-function getFirebaseAppInstance() {
+type FirebaseAppModule = typeof import('firebase/app')
+type FirebaseAuthModule = typeof import('firebase/auth')
+
+let firebaseModulesPromise: Promise<{ app: FirebaseAppModule; auth: FirebaseAuthModule }> | null = null
+
+async function loadFirebaseModules() {
+  if (firebaseModulesPromise) {
+    return firebaseModulesPromise
+  }
+
+  firebaseModulesPromise = (async () => {
+    try {
+      const [app, auth] = await Promise.all([import('firebase/app'), import('firebase/auth')])
+      return { app, auth }
+    } catch {
+      firebaseModulesPromise = null
+      throw new ApiError({
+        statusCode: 500,
+        code: 'GOOGLE_CLIENT_ERROR',
+        message: 'Không thể tải thư viện đăng nhập Google trên frontend.'
+      })
+    }
+  })()
+
+  return firebaseModulesPromise
+}
+
+async function getFirebaseAppInstance() {
   const config = readFirebaseConfig()
 
   if (!config) {
@@ -45,6 +70,9 @@ function getFirebaseAppInstance() {
       message: 'Google Sign-In chưa được cấu hình trên frontend.'
     })
   }
+
+  const { app } = await loadFirebaseModules()
+  const { getApps, getApp, initializeApp } = app
 
   if (getApps().length > 0) {
     return getApp()
@@ -59,7 +87,10 @@ export function isGoogleClientConfigured() {
 
 export async function getFirebaseIdTokenFromGoogle() {
   try {
-    const app = getFirebaseAppInstance()
+    const { auth: authModule } = await loadFirebaseModules()
+    const { getAuth, GoogleAuthProvider, signInWithPopup, signOut } = authModule
+
+    const app = await getFirebaseAppInstance()
     const auth = getAuth(app)
     const provider = new GoogleAuthProvider()
 

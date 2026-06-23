@@ -4,12 +4,9 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import {
   getProduct,
   getProductDescriptionPdfUrl,
-  getExpressionConfigs,
-  getModificationConfigs,
-  calculateVariantPricing,
+  getMarketplaceProductPricingTable,
   listRelatedProductsByAuthor,
 } from '../modules/catalog/api'
-import { toPublicProductId } from '../modules/catalog/idMap'
 import { consumePrefetchedProduct } from '../modules/catalog/productPrefetch'
 import { ApiError } from '../shared/api/errors'
 import ErrorState from '../shared/ui/states/ErrorState.vue'
@@ -18,20 +15,8 @@ import ProductGrid from '../pages/market/components/ProductGrid.vue'
 import ConfigOptionButton from '../components/product/ConfigOptionButton.vue'
 import WaveBars from '../components/ui/WaveBars.vue'
 import CheckList from '../components/ui/CheckList.vue'
-import UserIcon from '../components/icon/UserIcon.vue'
-import BuildingIcon from '../components/icon/BuildingIcon.vue'
-import CalendarIcon from '../components/icon/CalendarIcon.vue'
-import InfinityIcon from '../components/icon/InfinityIcon.vue'
-import MonitorIcon from '../components/icon/MonitorIcon.vue'
-import GlobeIcon from '../components/icon/GlobeIcon.vue'
-import VideoIcon from '../components/icon/VideoIcon.vue'
-import MegaphoneIcon from '../components/icon/MegaphoneIcon.vue'
-import DiscIcon from '../components/icon/DiscIcon.vue'
-import SlidersIcon from '../components/icon/SlidersIcon.vue'
-import MusicIcon from '../components/icon/MusicIcon.vue'
-import MicIcon from '../components/icon/MicIcon.vue'
-import WaveIcon from '../components/icon/WaveIcon.vue'
 import ProductDescriptionPdfWebView from '../components/documents/ProductDescriptionPdfWebView.vue'
+import { getApiBaseUrl } from '../shared/api/http'
 
 const defaultDeliverables = [
   'Bản thu âm chất lượng cao (WAV 24-bit/48kHz)',
@@ -58,16 +43,210 @@ const errorMessage = computed(() => {
   if (loadError.value instanceof Error) return loadError.value.message
   return 'Không thể tải dữ liệu'
 })
-const expressionConfigs = ref([])
-const modificationConfigs = ref([])
 
-// Variant states
-const platformType = ref('DIGITAL') // 'DIGITAL' | 'PHYSICAL'
-const subjectType = ref(route.query.subject || 'INDIVIDUAL') // 'INDIVIDUAL' | 'ORGANIZATION'
-const durationKey = ref(route.query.duration || 'ONE_YEAR') // 'ONE_YEAR' | 'PERPETUAL'
-const scopeKey = ref(route.query.scope || 'SINGLE_CHANNEL') // 'SINGLE_CHANNEL' | 'MULTI_CHANNEL'
-const selectedExpressionId = ref(route.query.expr || '')
-const selectedModificationId = ref(route.query.mod || '')
+const selectedPricingValues = ref({})
+
+const productAuthorName = computed(
+  () => product.value?.authorName || product.value?.artist?.displayName || 'Nghệ sĩ',
+)
+const productGenres = computed(() => {
+  if (Array.isArray(product.value?.genres) && product.value.genres.length > 0) {
+    return product.value.genres
+  }
+  if (product.value?.genre) return [product.value.genre]
+  return []
+})
+const primaryGenre = computed(() => productGenres.value[0] || 'Khác')
+const productDurationSeconds = computed(() => {
+  if (typeof product.value?.duration === 'number') return product.value.duration
+  if (typeof product.value?.durationSeconds === 'number') return product.value.durationSeconds
+  return 0
+})
+const productCreatedAt = computed(
+  () => product.value?.createdAt || product.value?.updatedAt || '',
+)
+const useCases = computed(() => (
+  Array.isArray(product.value?.useCases) ? product.value.useCases : []
+))
+const allowedPermissions = computed(() => (
+  Array.isArray(product.value?.allowedPermissions) ? product.value.allowedPermissions : []
+))
+const pricingPlatform = ref(null)
+const pricingSchema = ref([])
+const pricingTableRows = ref([])
+const pricingWarnings = ref([])
+const pricingMessage = ref('')
+const pricingErrorRequestId = ref('')
+const pricingLoading = ref(false)
+const pricingErrorApiBaseUrl = ref('')
+const activePricingRows = computed(() => (
+  pricingTableRows.value.filter((row) => (
+    typeof row.sellingPrice === 'number'
+  ))
+))
+
+function getPricingSchema(key) {
+  if (!Array.isArray(pricingSchema.value)) return null
+  return pricingSchema.value.find((item) => item.key === key) || null
+}
+
+function formatPricingOptionLabel(key, rawValue) {
+  if (key === 'is_exclusive') {
+    return String(rawValue) === 'true' ? 'Có' : 'Không'
+  }
+
+  if (key === 'view_target') {
+    const numericValue = Number(rawValue)
+    if (Number.isNaN(numericValue)) return String(rawValue)
+    if (numericValue === 1000000) return '1M'
+    if (numericValue >= 1000 && numericValue % 1000 === 0) {
+      return `${numericValue / 1000}K`
+    }
+    return String(numericValue)
+  }
+
+  if (key === 'duration') {
+    if (String(rawValue) === 'one_year') return '1 năm'
+    if (String(rawValue) === 'one_month') return '1 tháng'
+  }
+
+  return String(rawValue)
+}
+
+function getAttributeOptions(key) {
+  const schema = getPricingSchema(key)
+  const allowedValues = Array.from(new Set(
+    activePricingRows.value
+      .map((row) => row?.attributeValues?.[key])
+      .filter((value) => value !== undefined && value !== null)
+      .map((value) => String(value)),
+  ))
+
+  const options = Array.isArray(schema?.options) ? schema.options : []
+  if (options.length > 0) {
+    return options.map((option) => ({
+      value: String(option.value),
+      label: option.label,
+    }))
+  }
+
+  return allowedValues.map((value) => ({
+    value,
+    label: formatPricingOptionLabel(key, value),
+  }))
+}
+
+function getSelectedOption(options, value) {
+  return options.find((option) => String(option.value) === String(value)) || null
+}
+
+const pricingFields = computed(() => (
+  Array.isArray(pricingSchema.value)
+    ? pricingSchema.value.map((field) => ({
+        ...field,
+        options: getAttributeOptions(field.key),
+        selectedValue: String(selectedPricingValues.value?.[field.key] ?? ''),
+      }))
+    : []
+))
+
+function getVariantValue(variant, key) {
+  const value = variant?.attributeValues?.[key]
+  return value === undefined || value === null ? '' : String(value)
+}
+
+function isOptionAvailable(key, value) {
+  const candidateValue = String(value)
+  const currentSelections = selectedPricingValues.value || {}
+
+  return activePricingRows.value.some((row) => {
+    if (getVariantValue(row, key) !== candidateValue) return false
+
+    return Object.entries(currentSelections).every(([selectionKey, selectionValue]) => {
+      if (selectionKey === key || !selectionValue) return true
+      return getVariantValue(row, selectionKey) === selectionValue
+    })
+  })
+}
+
+function selectPricingOption(key, value) {
+  selectedPricingValues.value = {
+    ...selectedPricingValues.value,
+    [key]: String(value),
+  }
+}
+
+function getClosestVariant() {
+  if (!activePricingRows.value.length) return null
+
+  let bestVariant = activePricingRows.value[0]
+  let bestScore = -1
+
+  for (const variant of activePricingRows.value) {
+    let score = 0
+    for (const field of pricingFields.value) {
+      if (getVariantValue(variant, field.key) === String(selectedPricingValues.value?.[field.key] ?? '')) {
+        score += 1
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score
+      bestVariant = variant
+    }
+  }
+
+  return bestVariant
+}
+
+const currentVariant = computed(() => (
+  activePricingRows.value.find((variant) => (
+    pricingFields.value.every((field) => (
+      getVariantValue(variant, field.key) === String(selectedPricingValues.value?.[field.key] ?? '')
+    ))
+  )) || null
+))
+
+function normalizeVariantSelection() {
+  if (!activePricingRows.value.length) {
+    selectedPricingValues.value = {}
+    return
+  }
+
+  const bestVariant = currentVariant.value || getClosestVariant()
+  if (!bestVariant) return
+
+  selectedPricingValues.value = pricingFields.value.reduce((result, field) => {
+    result[field.key] = getVariantValue(bestVariant, field.key)
+    return result
+  }, {})
+}
+
+const hasPricingOptions = computed(() => activePricingRows.value.length > 0)
+const visiblePricingWarnings = computed(() => (
+  pricingWarnings.value.filter((warning) => {
+    const normalized = String(warning).toLowerCase()
+    return !(
+      normalized.includes('legacy') ||
+      normalized.includes('variant cũ') ||
+      normalized.includes('schema hiện tại') ||
+      normalized.includes('tự đồng bộ') ||
+      normalized.includes('bị gộp')
+    )
+  })
+))
+const priceUnavailableMessage = computed(() => {
+  if (pricingLoading.value) {
+    return 'Đang tải bảng giá sản phẩm...'
+  }
+  if (pricingMessage.value) {
+    return pricingMessage.value
+  }
+  if (pricingPlatform.value) {
+    return 'Sản phẩm chưa có biến thể đang bán.'
+  }
+  return 'Sản phẩm chưa có bảng giá khả dụng.'
+})
 
 const audioElement = ref(null)
 const isPlaying = ref(false)
@@ -123,65 +302,112 @@ const descriptionPdfUrl = ref('')
 const descriptionPdfLoading = ref(false)
 const descriptionPdfError = ref(false)
 
-// Price calculation from API
-const calcData = ref(null)
-const isCalculating = ref(false)
+function resetPricingState() {
+  pricingPlatform.value = null
+  pricingSchema.value = []
+  pricingTableRows.value = []
+  pricingWarnings.value = []
+  pricingMessage.value = ''
+  pricingErrorRequestId.value = ''
+  pricingErrorApiBaseUrl.value = ''
+  pricingLoading.value = false
+}
 
-async function fetchCalculation() {
-  if (!product.value) return
-  if (platformType.value === 'DIGITAL' && !product.value.digitalRightConfigId) {
-    calcData.value = null
-    return
-  }
-  if (platformType.value === 'PHYSICAL' && !product.value.physicalRightConfigId) {
-    calcData.value = null
-    return
-  }
+async function loadPricingData(seq) {
+  pricingLoading.value = true
+  pricingMessage.value = ''
+  pricingWarnings.value = []
+  pricingErrorRequestId.value = ''
+  pricingErrorApiBaseUrl.value = ''
 
-  isCalculating.value = true
   try {
-    const payload = {
-      platformType: platformType.value,
-      digitalRightConfigId: product.value.digitalRightConfigId,
-      physicalRightConfigId: product.value.physicalRightConfigId,
-      subject: subjectType.value,
-      duration: durationKey.value,
-      scope: scopeKey.value,
-      expressionConfigId: selectedExpressionId.value || undefined,
-      modificationConfigId: selectedModificationId.value || undefined
+    const pricingRes = await getMarketplaceProductPricingTable(productId.value)
+    if (seq !== loadSeq) return
+
+    if (!pricingRes.data) {
+      pricingMessage.value = 'Sản phẩm chưa có bảng giá khả dụng để giao dịch.'
+      pricingPlatform.value = null
+      pricingSchema.value = []
+      pricingTableRows.value = []
+      return
     }
-    const res = await calculateVariantPricing(payload)
-    calcData.value = {
-      total: res.totalPrice,
-      breakdown: res.breakdown.map(b => ({ label: b.label, value: null, isLine: true })), // the API doesn't return value per line but we show it
-      summary: {
-        'Nền tảng': platformType.value === 'DIGITAL' ? 'Kỹ thuật số' : 'Vật lý / Biểu diễn',
-        'Đối tượng': subjectType.value === 'INDIVIDUAL' ? 'Cá nhân' : 'Tổ chức',
-        'Thời hạn': durationKey.value === 'ONE_YEAR' ? '1 Năm' : 'Vĩnh viễn',
-        'Phạm vi': scopeKey.value === 'SINGLE_CHANNEL' ? '1 Kênh' : 'Đa Kênh'
-      }
+
+    pricingPlatform.value = {
+      platformType: pricingRes.data.platformType,
+      platformName: pricingRes.data.platformName,
     }
+    pricingSchema.value = Array.isArray(pricingRes.data.schema) ? pricingRes.data.schema : []
+    pricingTableRows.value = Array.isArray(pricingRes.data.items) ? pricingRes.data.items : []
+    pricingWarnings.value = Array.isArray(pricingRes.data.warnings) ? pricingRes.data.warnings : []
   } catch (err) {
-    console.error('Pricing calculate error', err)
-    calcData.value = null
+    if (seq !== loadSeq) return
+    pricingPlatform.value = null
+    pricingSchema.value = []
+    pricingTableRows.value = []
+    pricingWarnings.value = []
+
+    if (err instanceof ApiError) {
+      pricingErrorRequestId.value = err.requestId || ''
+      pricingErrorApiBaseUrl.value = getApiBaseUrl()
+      if (err.statusCode === 404) {
+        pricingMessage.value =
+          'API bảng giá marketplace chưa có trên server (404). Cần cập nhật/restart musica-api để có endpoint bảng giá public.'
+      } else {
+        pricingMessage.value = err.message || 'Không tải được bảng giá sản phẩm.'
+      }
+    } else if (err instanceof Error) {
+      pricingMessage.value = err.message || 'Không tải được bảng giá sản phẩm.'
+    } else {
+      pricingMessage.value = 'Không tải được bảng giá sản phẩm.'
+    }
   } finally {
-    isCalculating.value = false
+    if (seq !== loadSeq) return
+    pricingLoading.value = false
   }
 }
 
-watch([platformType, subjectType, durationKey, scopeKey, selectedExpressionId, selectedModificationId], () => {
-  router.replace({
-    query: {
-      ...route.query,
-      subject: subjectType.value,
-      duration: durationKey.value,
-      scope: scopeKey.value,
-      expr: selectedExpressionId.value || undefined,
-      mod: selectedModificationId.value || undefined
+const calcData = computed(() => {
+  if (!pricingPlatform.value || !currentVariant.value) return null
+
+  const attributeBreakdown = pricingFields.value.map((field) => {
+    const selectedValue = String(selectedPricingValues.value?.[field.key] ?? '')
+    const selectedOption = getSelectedOption(field.options || [], selectedValue)
+    return {
+      label: field.label,
+      value: selectedOption?.label || formatPricingOptionLabel(field.key, selectedValue),
     }
   })
-  fetchCalculation()
+
+  return {
+    subtotal: currentVariant.value.sellingPrice,
+    referencePrice: currentVariant.value.referencePrice,
+    currency: currentVariant.value.currency,
+    breakdown: [
+      { label: 'Nền tảng', value: pricingPlatform.value.platformName },
+      ...attributeBreakdown,
+      ...(typeof currentVariant.value.referencePrice === 'number'
+        ? [{ label: 'Giá tham chiếu', value: formatVND(currentVariant.value.referencePrice) }]
+        : []),
+      ...(currentVariant.value.updatedAt
+        ? [{ label: 'Cập nhật', value: formatDate(currentVariant.value.updatedAt) }]
+        : []),
+    ],
+    summary: {
+      'Nền tảng': pricingPlatform.value.platformName,
+      ...Object.fromEntries(attributeBreakdown.map((item) => [item.label, item.value])),
+    },
+  }
 })
+
+watch(activePricingRows, () => {
+  normalizeVariantSelection()
+}, { immediate: true })
+
+watch(selectedPricingValues, () => {
+  if (hasPricingOptions.value && !currentVariant.value) {
+    normalizeVariantSelection()
+  }
+}, { deep: true })
 
 const related = ref([])
 
@@ -191,9 +417,9 @@ function addToCart() {
   cart.add({
     productId: product.value.id,
     title: product.value.title,
-    artist: product.value.artist,
+    artist: productAuthorName.value,
     cover: product.value.thumbnailUrl,
-    price: calcData.value.total,
+    price: calcData.value.subtotal,
     configuration: calcData.value.summary
   })
   addedFlash.value = true
@@ -212,9 +438,7 @@ async function loadData() {
   loadError.value = null
   product.value = null
   related.value = []
-  expressionConfigs.value = []
-  modificationConfigs.value = []
-  calcData.value = null
+  resetPricingState()
 
   descriptionPdfLoading.value = false
   descriptionPdfError.value = false
@@ -229,6 +453,8 @@ async function loadData() {
       if (seq !== loadSeq) return
       product.value = pRes.data
     }
+
+    void loadPricingData(seq)
 
     try {
       const relRes = await listRelatedProductsByAuthor({
@@ -258,23 +484,6 @@ async function loadData() {
       if (seq !== loadSeq) return
       descriptionPdfLoading.value = false
     }
-
-    const [expRes, modRes] = await Promise.all([
-      getExpressionConfigs(),
-      getModificationConfigs()
-    ])
-    if (seq !== loadSeq) return
-    expressionConfigs.value = (expRes.items || []).filter(item => item.status === 'ACTIVE')
-    modificationConfigs.value = (modRes.items || []).filter(item => item.status === 'ACTIVE')
-
-    if (expressionConfigs.value.length > 0 && !selectedExpressionId.value) {
-      selectedExpressionId.value = expressionConfigs.value[0].id
-    }
-    if (modificationConfigs.value.length > 0 && !selectedModificationId.value) {
-      selectedModificationId.value = modificationConfigs.value[0].id
-    }
-    
-    fetchCalculation()
   } catch (err) {
     if (seq !== loadSeq) return
     if (
@@ -294,20 +503,11 @@ async function loadData() {
 }
 
 onMounted(() => {
-  if (route.query.subject) subjectType.value = route.query.subject
-  if (route.query.duration) durationKey.value = route.query.duration
-  if (route.query.scope) scopeKey.value = route.query.scope
-  if (route.query.expr) selectedExpressionId.value = route.query.expr
-  if (route.query.mod) selectedModificationId.value = route.query.mod
-
   loadData()
 })
 
 watch(() => route.params.id, () => {
-  platformType.value = 'DIGITAL'
-  subjectType.value = 'INDIVIDUAL'
-  durationKey.value = 'ONE_YEAR'
-  scopeKey.value = 'SINGLE_CHANNEL'
+  selectedPricingValues.value = {}
   loadData()
 })
 
@@ -328,22 +528,6 @@ function formatDuration(secs) {
 function formatVND(amount) {
   if (!amount) return '0 đ'
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)
-}
-
-const getIconForExpression = (name) => {
-  const lower = name.toLowerCase()
-  if (lower.includes('ca sĩ') || lower.includes('vocal')) return MicIcon
-  if (lower.includes('không lời') || lower.includes('instrumental')) return WaveIcon
-  if (lower.includes('vlog')) return VideoIcon
-  if (lower.includes('quảng cáo') || lower.includes('quang cao') || lower.includes('ads')) return MegaphoneIcon
-  return WaveIcon
-}
-
-const getIconForModification = (name) => {
-  const lower = name.toLowerCase()
-  if (lower.includes('nguyên bản') || lower.includes('nguyen ban')) return DiscIcon
-  if (lower.includes('phối khí') || lower.includes('phoi khi')) return SlidersIcon
-  return MusicIcon
 }
 </script>
 
@@ -369,7 +553,7 @@ const getIconForModification = (name) => {
     <div class="container crumbs">
       <RouterLink to="/">Trang chủ</RouterLink>
       <span>›</span>
-      <RouterLink to="/" class="muted">{{ (product.genre || 'Khác').toUpperCase() }}</RouterLink>
+      <RouterLink to="/" class="muted">{{ primaryGenre.toUpperCase() }}</RouterLink>
       <span>›</span>
       <span class="muted">{{ product.title }}</span>
     </div>
@@ -388,21 +572,21 @@ const getIconForModification = (name) => {
                 </div>
                 <div class="meta-block">
                   <div class="title-row">
-                    <span class="badge-cat">{{ (product.genre || 'POP').toUpperCase() }}</span>
+                    <span class="badge-cat">{{ primaryGenre.toUpperCase() }}</span>
                   </div>
                   <h1>{{ product.title }}</h1>
-                  <p class="byline">{{ product.authorName || 'Nghệ sĩ' }}</p>
+                  <p class="byline">{{ productAuthorName }}</p>
                   <div class="wave-line flex-1">
                     <WaveBars :peaks="peaks" :bars="80" size="md" variant="muted" :progress="progress" />
-                    <span class="time">{{ formatTime(progress, product.duration) }} <em>/ {{ formatDuration(product.duration) }}</em></span>
+                    <span class="time">{{ formatTime(progress, productDurationSeconds) }} <em>/ {{ formatDuration(productDurationSeconds) }}</em></span>
                   </div>
                 </div>
               </div>
               <div class="meta-row">
-                <div><span>Nền tảng</span><b>{{ product.digitalRightConfigId ? 'Kỹ thuật số' : 'Vật lý' }}</b></div>
-                <div><span>Thể loại</span><b>{{ product.genre || 'Khác' }}</b></div>
-                <div><span>Phát hành</span><b>{{ formatDate(product.createdAt) }}</b></div>
-                <div><span>Thời lượng</span><b>{{ Math.floor((product.duration || 0) / 60) }}:{{ String((product.duration || 0) % 60).padStart(2, '0') }}</b></div>
+                <div><span>Nền tảng</span><b>{{ pricingPlatform?.platformName || 'Marketplace' }}</b></div>
+                <div><span>Thể loại</span><b>{{ primaryGenre }}</b></div>
+                <div><span>Phát hành</span><b>{{ formatDate(productCreatedAt) }}</b></div>
+                <div><span>Thời lượng</span><b>{{ formatDuration(productDurationSeconds) }}</b></div>
               </div>
             </div>
 
@@ -418,94 +602,58 @@ const getIconForModification = (name) => {
           <div class="config-card">
             <div class="config-head">
               <h2>Cấu hình tác quyền</h2>
+              <p class="muted">
+                Dữ liệu biến thể và giá được đọc từ bảng giá sản phẩm.
+              </p>
             </div>
 
-            <div class="field-group">
-              <div class="field">
-                <div class="big-cards">
+            <div v-if="hasPricingOptions" class="field-group">
+              <div v-for="field in pricingFields" :key="field.key" class="field">
+                <label class="field-label">{{ field.label }}</label>
+                <div class="seg option-row">
                   <ConfigOptionButton
-                    :active="subjectType === 'INDIVIDUAL'"
-                    :icon="UserIcon"
-                    @click="subjectType = 'INDIVIDUAL'"
-                  >Cá nhân</ConfigOptionButton>
-                  <ConfigOptionButton
-                    :active="subjectType === 'ORGANIZATION'"
-                    :icon="BuildingIcon"
-                    @click="subjectType = 'ORGANIZATION'"
-                  >Tổ chức</ConfigOptionButton>
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="big-cards">
-                  <ConfigOptionButton
-                    :active="durationKey === 'ONE_YEAR'"
-                    :icon="CalendarIcon"
-                    @click="durationKey = 'ONE_YEAR'"
-                  >1 Năm</ConfigOptionButton>
-                  <ConfigOptionButton
-                    :active="durationKey === 'PERPETUAL'"
-                    :icon="InfinityIcon"
-                    @click="durationKey = 'PERPETUAL'"
-                  >Vĩnh viễn</ConfigOptionButton>
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="big-cards">
-                  <ConfigOptionButton
-                    :active="scopeKey === 'SINGLE_CHANNEL'"
-                    :icon="MonitorIcon"
-                    @click="scopeKey = 'SINGLE_CHANNEL'"
-                  >1 Kênh</ConfigOptionButton>
-                  <ConfigOptionButton
-                    :active="scopeKey === 'MULTI_CHANNEL'"
-                    :icon="GlobeIcon"
-                    @click="scopeKey = 'MULTI_CHANNEL'"
-                  >Đa Kênh</ConfigOptionButton>
-                </div>
-              </div>
-
-              <div class="field" v-if="expressionConfigs.length > 0">
-                <label class="field-label">Hình thức</label>
-                <div class="big-cards">
-                  <ConfigOptionButton
-                    v-for="c in expressionConfigs"
-                    :key="c.id"
-                    :active="selectedExpressionId === c.id"
-                    :icon="getIconForExpression(c.name)"
-                    @click="selectedExpressionId = c.id"
-                  >{{ c.name }}</ConfigOptionButton>
-                </div>
-              </div>
-
-              <div class="field" v-if="modificationConfigs.length > 0">
-                <label class="field-label">Mức độ sử dụng (Bản quyền phái sinh)</label>
-                <div class="big-cards">
-                  <ConfigOptionButton
-                    v-for="c in modificationConfigs"
-                    :key="c.id"
-                    :active="selectedModificationId === c.id"
-                    :icon="getIconForModification(c.name)"
-                    @click="selectedModificationId = c.id"
-                  >{{ c.name }}</ConfigOptionButton>
+                    v-for="option in field.options"
+                    :key="`${field.key}:${option.value}`"
+                    variant="seg"
+                    :active="field.selectedValue === String(option.value)"
+                    :disabled="!isOptionAvailable(field.key, option.value)"
+                    @click="selectPricingOption(field.key, option.value)"
+                  >{{ option.label }}</ConfigOptionButton>
                 </div>
               </div>
             </div>
+            <div v-else class="pricing-empty">
+              {{ priceUnavailableMessage }}
+              <div v-if="pricingErrorRequestId" class="muted">RequestId: {{ pricingErrorRequestId }}</div>
+              <div v-if="pricingErrorApiBaseUrl" class="muted">API Base URL: {{ pricingErrorApiBaseUrl }}</div>
+            </div>
 
-            <div class="price-summary" :style="{ opacity: isCalculating ? 0.6 : 1 }">
+            <div v-if="visiblePricingWarnings.length > 0" class="pricing-warning-list">
+              <div v-for="warning in visiblePricingWarnings" :key="warning" class="pricing-warning">
+                {{ warning }}
+              </div>
+            </div>
+
+            <div class="price-summary">
               <div class="ps-total">
                 <span>Tạm tính</span>
                 <transition name="price">
-                  <strong v-if="calcData" :key="calcData.total" class="gradient-text">{{ formatVND(calcData.total) }}</strong>
+                  <strong v-if="calcData" :key="calcData.subtotal" class="gradient-text">{{ formatVND(calcData.subtotal) }}</strong>
                 </transition>
+                <span v-if="!calcData" class="muted">Chưa có giá khả dụng</span>
+              </div>
+              <div v-if="calcData" class="price-breakdown">
+                <div v-for="item in calcData.breakdown" :key="item.label" class="price-breakdown__row">
+                  <span>{{ item.label }}</span>
+                  <b>{{ item.value }}</b>
+                </div>
               </div>
               <small class="muted">Chưa gồm phí xử lý 4% & VAT. Hợp đồng số phát hành ngay sau thanh toán.</small>
             </div>
 
             <div class="actions">
-              <button class="btn btn-primary btn-lg" @click="buyNow">Tiến hành mua tác quyền</button>
-              <button class="btn btn-ghost btn-lg" @click="addToCart">
+              <button class="btn btn-primary btn-lg" :disabled="!calcData" @click="buyNow">Tiến hành mua tác quyền</button>
+              <button class="btn btn-ghost btn-lg" :disabled="!calcData" @click="addToCart">
                 <span v-if="!addedFlash">Thêm vào giỏ</span>
                 <span v-else>✓ Đã thêm</span>
               </button>
@@ -532,9 +680,11 @@ const getIconForModification = (name) => {
         <div class="info-block">
           <h3>Quyền sở hữu & xác minh</h3>
           <ul class="ownership">
-            <li><span>Tác giả</span><b>{{ product.authorName || 'Nghệ sĩ' }}</b></li>
-            <li><span>Ngày đăng ký</span><b>{{ formatDate(product.createdAt) }}</b></li>
+            <li><span>Tác giả</span><b>{{ productAuthorName }}</b></li>
+            <li><span>Ngày đăng ký</span><b>{{ formatDate(productCreatedAt) }}</b></li>
             <li><span>Trạng thái</span><b class="ok">✓ Đã xác minh trên MusicA</b></li>
+            <li v-if="allowedPermissions.length > 0"><span>Quyền cho phép</span><b>{{ allowedPermissions.map(item => item.name).join(', ') }}</b></li>
+            <li v-if="useCases.length > 0"><span>Tình huống sử dụng</span><b>{{ useCases.join(', ') }}</b></li>
           </ul>
         </div>
       </div>
@@ -760,7 +910,8 @@ const getIconForModification = (name) => {
   padding: 24px;
   box-shadow: var(--shadow-md);
 }
-.config-head h2 { margin: 8px 0 16px; font-size: 19px; letter-spacing: -0.01em; }
+.config-head h2 { margin: 8px 0 8px; font-size: 19px; letter-spacing: -0.01em; }
+.config-head .muted { margin: 0 0 16px; font-size: 13px; line-height: 1.6; }
 .field { margin-bottom: 18px; }
 .field-label {
   display: block;
@@ -771,11 +922,83 @@ const getIconForModification = (name) => {
   letter-spacing: 0.06em;
   margin-bottom: 8px;
 }
-.big-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.option-row {
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  scrollbar-width: thin;
 }
+.option-row::-webkit-scrollbar {
+  height: 6px;
+}
+.option-row::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+.option-row :deep(.seg-btn) {
+  flex: 0 0 auto;
+  border: 1px solid var(--c-border);
+  background: #fff;
+  border-radius: 12px;
+  color: var(--c-text);
+  box-shadow: none;
+}
+.option-row :deep(.seg-btn.active) {
+  border-color: var(--c-teal-500);
+  color: var(--c-teal-700);
+  background: linear-gradient(180deg, #f0fdfa, #ffffff);
+}
+.option-row :deep(.seg-btn.disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pricing-empty,
+.pricing-warning {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.pricing-empty {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-soft);
+  color: var(--c-text-soft);
+}
+.pricing-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pricing-warning {
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+}
+.price-breakdown {
+  margin: 12px 0 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-soft);
+}
+.price-breakdown__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  padding: 6px 0;
+}
+.price-breakdown__row + .price-breakdown__row {
+  border-top: 1px dashed var(--c-border);
+}
+.price-breakdown__row span { color: var(--c-text-soft); }
+.price-breakdown__row b { font-size: 12.5px; }
 
 .purpose-grid {
   display: grid;

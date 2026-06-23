@@ -1,15 +1,65 @@
 import { products as mockProducts } from "../../data/catalog";
 import type {
+  AdminProductPlatformsResponse,
+  MarketplaceProductPricingTable,
   ProductsListMeta,
   ProductsListResponse,
   ProductDetail,
+  ProductPlatformPriceTable,
+  ProductPricingSchemaAttribute,
   SignedUrl,
 } from "./types";
 import { apiRequest, getApiBaseUrl } from "../../shared/api/http";
 import { mockFlags } from "../../shared/api/mockFlags";
 import { toInternalProductId, toPublicProductId } from "./idMap";
 
+function parseDurationToSeconds(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  const mmssMatch = normalized.match(/^(\d+):(\d{1,2})$/);
+  if (mmssMatch) {
+    const minutes = Number(mmssMatch[1]);
+    const seconds = Number(mmssMatch[2]);
+    return minutes * 60 + seconds;
+  }
+
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? Math.round(numeric) : null;
+}
+
 function mapToDetail(p: any): ProductDetail {
+  const durationSeconds =
+    typeof p.durationSeconds === "number"
+      ? p.durationSeconds
+      : parseDurationToSeconds(p.duration);
+  const authorName =
+    typeof p.authorName === "string"
+      ? p.authorName
+      : typeof p.artist === "string"
+        ? p.artist
+        : null;
+  const genres = Array.isArray(p.genres)
+    ? p.genres.filter((item: unknown): item is string => typeof item === "string")
+    : typeof p.category === "string"
+      ? [p.category]
+      : [];
+  const createdAt =
+    typeof p.createdAt === "string"
+      ? p.createdAt
+      : typeof p.releaseDate === "string"
+        ? new Date(p.releaseDate).toISOString()
+        : new Date().toISOString();
+  const updatedAt =
+    typeof p.updatedAt === "string"
+      ? p.updatedAt
+      : createdAt;
+
   return {
     id: toPublicProductId(String(p.id)),
     productCode: p.isrc
@@ -17,11 +67,28 @@ function mapToDetail(p: any): ProductDetail {
       : `PROD-${String(p.id).slice(0, 6).padStart(6, "0")}`,
     title: p.title,
     description: p.description,
-    genre: p.category,
-    durationSeconds:
-      typeof p.duration === "number" ? Math.round(p.duration * 60) : undefined,
+    artistId: p.artistId || p.artist || "",
+    authorName,
+    artist: {
+      id: p.artistId || p.artist || "",
+      displayName: authorName || "Nghệ sĩ",
+    },
+    genre: genres[0] || null,
+    genres,
+    duration: durationSeconds,
+    durationSeconds,
     thumbnailUrl: p.cover || null,
-    artist: { id: p.artistId || p.artist, displayName: p.artist },
+    previewAudioUrl: typeof p.previewAudioUrl === "string" ? p.previewAudioUrl : null,
+    useCases: Array.isArray(p.useCases)
+      ? p.useCases
+      : Array.isArray(p.tags)
+        ? p.tags
+        : [],
+    allowedPermissions: Array.isArray(p.allowedPermissions)
+      ? p.allowedPermissions
+      : [],
+    createdAt,
+    updatedAt,
     documents: Array.isArray(p.documents) ? p.documents : undefined,
   };
 }
@@ -127,6 +194,35 @@ export async function getProduct(productId: string) {
   return { data: res.data };
 }
 
+export async function getMarketplaceProductPricingTable(productId: string) {
+  const baseUrl = getApiBaseUrl();
+  const trimmed = baseUrl.replace(/\/$/, '');
+  const candidates = [
+    trimmed,
+    ...(trimmed.endsWith('/api') ? [trimmed.slice(0, -4)] : [`${trimmed}/api`]),
+  ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      const res = await apiRequest<MarketplaceProductPricingTable | null>({
+        baseUrlOverride: candidate,
+        path: `/marketplace/products/${productId}/pricing`,
+        method: "GET",
+      });
+      return { data: res.data };
+    } catch (err) {
+      lastError = err;
+      if (err instanceof ApiError && err.statusCode === 404) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
+}
+
 export async function getProductDescriptionPdfUrl(productId: string) {
   const baseUrl = getApiBaseUrl();
   const shouldMock = mockFlags.products || !baseUrl;
@@ -187,6 +283,30 @@ export async function getProductPlaybackUrl(productId: string) {
 
   const res = await apiRequest<SignedUrl>({
     path: `/products/${productId}/playback-url`,
+    method: "GET",
+  });
+  return { data: res.data };
+}
+
+export async function listAdminProductPlatforms(productId: string) {
+  const res = await apiRequest<AdminProductPlatformsResponse>({
+    path: `/admin/products/${productId}/platforms`,
+    method: "GET",
+  });
+  return { data: res.data };
+}
+
+export async function getPricingPlatformSchema(platformType: string) {
+  const res = await apiRequest<ProductPricingSchemaAttribute[]>({
+    path: `/platforms/${platformType}/schema`,
+    method: "GET",
+  });
+  return { data: res.data };
+}
+
+export async function getAdminProductPlatformPriceTable(productPlatformId: string) {
+  const res = await apiRequest<ProductPlatformPriceTable>({
+    path: `/admin/product-platforms/${productPlatformId}/price-table`,
     method: "GET",
   });
   return { data: res.data };

@@ -4,6 +4,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../modules/auth/auth.store'
 import { getAuthErrorMessage } from '../../modules/auth/auth.messages'
 import type { OtpPurpose } from '../../modules/auth/types'
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '../../components/ui/input-otp'
+import { Button } from '../../components/ui/button'
+import { Alert, AlertDescription } from '../../components/ui/alert'
+
+const loginBannerUrl = new URL('../../shared/ui/images/auth/login-banner.png', import.meta.url).href
 
 const router = useRouter()
 const route = useRoute()
@@ -19,7 +24,7 @@ const purpose = computed<OtpPurpose>(() => {
 })
 const email = computed(() => (route.query.email as string) || auth.pendingOtpChallenge?.email || 'người dùng')
 
-const otpValues = ref(['', '', '', '', '', ''])
+const otpCode = ref('')
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
@@ -57,33 +62,8 @@ async function handleResend() {
   }
 }
 
-function handleInput(index: number, event: Event) {
-  const input = event.target as HTMLInputElement
-  const val = input.value.replace(/\D/g, '')
-  otpValues.value[index] = val.slice(-1)
-
-  if (val && index < 5) {
-    const nextInput = document.getElementById(`otp-${index + 1}`) as HTMLInputElement | null
-    if (nextInput) nextInput.focus()
-  }
-
-  if (otpValues.value.every((v) => v !== '')) {
-    submitOtp()
-  }
-}
-
-function handleKeyDown(index: number, event: KeyboardEvent) {
-  if (event.key === 'Backspace' && !otpValues.value[index] && index > 0) {
-    otpValues.value[index - 1] = ''
-    const prevInput = document.getElementById(`otp-${index - 1}`) as HTMLInputElement | null
-    if (prevInput) {
-      prevInput.focus()
-    }
-  }
-}
-
-async function submitOtp() {
-  const code = otpValues.value.join('')
+async function submitOtp(value?: string) {
+  const code = (value ?? otpCode.value).trim()
   if (code.length < 6) return
 
   errorMessage.value = null
@@ -115,15 +95,16 @@ async function submitOtp() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-on-surface font-body-md text-sm flex flex-col w-full">
-    <!-- Upper Content Area: Split layout -->
-    <div class="flex-grow flex flex-col md:flex-row w-full">
-      <!-- Left Side: Hero Image -->
-      <div class="w-full md:w-1/2 relative min-h-[300px] md:min-h-0 bg-surface-container">
+  <div class="w-full overflow-x-hidden bg-background text-on-surface font-body-md text-sm">
+    <div class="min-h-screen flex w-full flex-col md:flex-row">
+      <div v-once class="w-full md:w-1/2 relative min-h-[300px] md:min-h-0 bg-surface-container">
         <img
           alt="Music Studio Hero"
           class="absolute inset-0 w-full h-full object-cover"
-          src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg"
+          decoding="async"
+          fetchpriority="high"
+          loading="eager"
+          :src="loginBannerUrl"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-on-surface/85 to-transparent flex items-end p-8">
           <div class="text-white max-w-md">
@@ -135,18 +116,14 @@ async function submitOtp() {
         </div>
       </div>
 
-      <!-- Right Side: Compact Form (Slightly larger fonts) -->
-      <div class="w-full md:w-1/2 flex items-center justify-center bg-surface-container-lowest p-8 md:p-12">
-        <div class="w-full max-w-sm">
-          <!-- Logo Header -->
+      <div class="w-full md:w-1/2 bg-surface-container-lowest px-6 py-10 sm:px-8 md:px-12 md:py-14">
+        <div class="mx-auto flex min-h-full w-full max-w-md items-center">
+          <div class="w-full px-1 py-2 sm:px-2">
           <div class="mb-5">
             <h1 class="text-3xl font-extrabold text-primary tracking-tight">MusicA</h1>
           </div>
 
           <div class="text-left mb-6">
-            <span class="inline-block px-3 py-1 bg-surface-container rounded-full text-primary text-xs font-bold uppercase mb-2">
-              XÁC THỰC
-            </span>
             <h2 class="text-2xl font-bold mb-1">Nhập mã xác minh</h2>
             <p class="text-sm text-text-mute">
               Chúng tôi đã gửi mã xác minh 6 số đến email <span class="font-bold text-on-surface">{{ email }}</span>.
@@ -155,55 +132,59 @@ async function submitOtp() {
 
           <div class="space-y-5">
             <!-- OTP input box -->
-            <div class="flex justify-between gap-2">
-              <input
-                v-for="(val, idx) in otpValues"
-                :key="idx"
-                :id="`otp-${idx}`"
-                v-model="otpValues[idx]"
-                @input="handleInput(idx, $event)"
-                @keydown="handleKeyDown(idx, $event)"
-                class="w-12 h-14 text-center text-xl font-bold rounded-xl bg-bg-soft border border-border-light text-on-surface focus:outline-none focus:border-border-strong focus:bg-surface-container-lowest transition-all"
-                type="text"
-                maxlength="1"
-                autocomplete="off"
-              />
+            <div class="flex justify-center">
+              <InputOTP
+                v-model="otpCode"
+                :maxlength="6"
+                autocomplete="one-time-code"
+                inputmode="numeric"
+                @complete="submitOtp"
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot v-for="idx in 6" :key="idx" :index="idx - 1" />
+                </InputOTPGroup>
+              </InputOTP>
             </div>
 
             <!-- Error Alert -->
-            <div v-if="errorMessage" class="p-3 bg-error-container border border-error rounded-xl text-error text-sm text-left">
-              {{ errorMessage }}
-            </div>
+            <Alert v-if="errorMessage" variant="destructive" class="rounded-xl border-error bg-error-container text-error">
+              <AlertDescription>
+                {{ errorMessage }}
+              </AlertDescription>
+            </Alert>
 
-            <button
-              @click="submitOtp"
-              class="w-full h-12 bg-gradient-to-r from-primary to-secondary text-on-primary font-bold text-sm rounded-full flex items-center justify-center gap-2 hover:opacity-95 transition-all scale-95 active:scale-90"
-              :disabled="submitting || otpValues.some(v => v === '')"
+            <Button
+              @click="() => submitOtp()"
+              class="h-11 w-full rounded-xl"
+              :disabled="submitting || otpCode.length < 6"
+              type="button"
             >
               <span v-if="submitting">Đang xác thực…</span>
               <span v-else>Xác minh OTP</span>
-            </button>
+            </Button>
 
             <!-- Resend section -->
             <div class="text-left text-sm text-text-soft">
               <span v-if="cooldown > 0">
                 Gửi lại mã sau <span class="font-bold text-on-surface">{{ cooldown }}s</span>
               </span>
-              <button
+              <Button
                 v-else
                 @click="handleResend"
-                class="text-primary font-bold hover:underline cursor-pointer bg-transparent border-none p-0"
+                class="h-auto p-0 text-primary"
+                type="button"
+                variant="link"
               >
                 Gửi lại mã OTP
-              </button>
+              </Button>
             </div>
+          </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Bottom Row: Full-width Footer -->
-    <footer class="w-full py-4 px-6 md:px-12 border-t border-border-light bg-surface-container-lowest text-xs text-text-mute shrink-0">
+    <footer v-once class="w-full py-4 px-6 md:px-12 border-t border-border-light bg-surface-container-lowest text-xs text-text-mute">
       <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
         <nav class="flex flex-wrap justify-center sm:justify-start gap-4">
           <a class="hover:underline hover:text-primary transition-colors" href="#">Điều khoản sử dụng</a>

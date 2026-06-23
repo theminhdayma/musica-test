@@ -905,56 +905,76 @@ function formatVND(amount) {
 .left-sticky .info-block { margin-top: 18px; }
 .config-card {
   background: #fff;
-  border: 1px solid var(--c-border);
   border-radius: var(--radius-xl);
   padding: 24px;
   box-shadow: var(--shadow-md);
 }
 .config-head h2 { margin: 8px 0 8px; font-size: 19px; letter-spacing: -0.01em; }
 .config-head .muted { margin: 0 0 16px; font-size: 13px; line-height: 1.6; }
-.field { margin-bottom: 18px; }
-.field-label {
-  display: block;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--c-text);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-.option-row {
-  flex-wrap: nowrap;
-  gap: 8px;
-  overflow-x: auto;
+.field {
+  margin-bottom: 16px;
   padding: 0;
-  background: transparent;
   border: none;
   border-radius: 0;
-  scrollbar-width: thin;
+  background: transparent;
+}
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #24364d;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+.option-row {
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow: visible;
+  padding: 6px;
+  background: linear-gradient(180deg, #f7fafc, #eef4fb);
+  border: none;
+  border-radius: 999px;
+  scrollbar-width: none;
+  justify-content: center;
 }
 .option-row::-webkit-scrollbar {
-  height: 6px;
+  display: none;
 }
 .option-row::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.45);
   border-radius: 999px;
 }
 .option-row :deep(.seg-btn) {
-  flex: 0 0 auto;
-  border: 1px solid var(--c-border);
+  flex: 1 1 0;
+  min-height: 42px;
+  min-width: 0;
+  padding: 10px 16px;
+  border: 1px solid transparent;
   background: #fff;
-  border-radius: 12px;
-  color: var(--c-text);
-  box-shadow: none;
+  border-radius: 999px;
+  color: #27364b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color .22s ease, color .22s ease, background .22s ease, box-shadow .22s ease, transform .22s ease;
+  text-align: center;
+}
+.option-row :deep(.seg-btn:hover:not(.disabled)) {
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #0f766e;
+  transform: translateY(-1px);
 }
 .option-row :deep(.seg-btn.active) {
   border-color: var(--c-teal-500);
-  color: var(--c-teal-700);
-  background: linear-gradient(180deg, #f0fdfa, #ffffff);
+  color: #0f766e;
+  background: linear-gradient(180deg, #ecfeff, #ffffff);
+  box-shadow: 0 8px 18px rgba(20, 184, 166, 0.16);
 }
 .option-row :deep(.seg-btn.disabled) {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
 }
 .pricing-empty,
 .pricing-warning {
@@ -1069,11 +1089,14 @@ function formatVND(amount) {
 .seg {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
   background: var(--c-bg-soft);
   padding: 4px;
   border-radius: var(--radius-full);
   border: 1px solid var(--c-border);
+}
+.seg.option-row {
+  border: none;
 }
 .seg-btn {
   flex: 1;

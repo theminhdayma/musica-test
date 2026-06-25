@@ -48,3 +48,46 @@ export type CreatedOrderResponse = {
   }
   createdAt: string
 }
+
+export type OrderDetailResponse = {
+  id: string
+  orderNumber: string
+  status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED'
+  currency: string
+  amounts: {
+    subtotalAmount: number
+    discountAmount: number
+    taxAmount: number
+    totalAmount: number
+  }
+  buyer: {
+    id: string
+    email: string
+    fullName: string
+  }
+  items: Array<{
+    productId: string
+    title: string
+    unitPrice: number
+    quantity: number
+    lineTotalAmount: number
+    selectedUsageRightsSnapshot?: string[]
+    pricingAttributesSnapshot?: Record<string, unknown> | null
+  }>
+  payment: {
+    provider: string
+    transactionId: string | null
+    status: 'SUCCEEDED' | 'FAILED' | 'PENDING' | 'VOIDED'
+    amount: number
+    paidAt: string | null
+  } | null
+  paidAt: string | null
+  createdAt: string
+  buyerSnapshotName?: string | null
+}
+
+export type SepayCheckoutResponse = {
+  actionUrl: string
+  method: 'POST'
+  fields: Record<string, string>
+}

@@ -30,6 +30,8 @@ export const routes = [
     meta: { requiresAuth: true, requiredRoles: ['BUYER'], requiredPermissions: ['manage_order'] }
   },
   { path: '/success', name: 'success', component: () => import('../pages/success/index.page.vue') },
+  { path: '/cancel', name: 'cancel', component: () => import('../pages/cancel/index.page.vue') },
+  { path: '/error', name: 'error', component: () => import('../pages/error/index.page.vue') },
   
   // Auth Routes
   { path: '/login', redirect: '/auth/login' },

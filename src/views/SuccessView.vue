@@ -1,11 +1,66 @@
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { getBuyerOrderDetail } from '../modules/orders/api'
+import { useCartStore } from '../stores/cart'
+
 const route = useRoute()
-const orderId = computed(() => typeof route.query.orderId === 'string' ? route.query.orderId : '')
-const hasOrder = computed(() => orderId.value.length > 0)
-const code = computed(() => hasOrder.value ? orderId.value : 'MUSA-' + Math.random().toString(36).toUpperCase().slice(-8))
+const cart = useCartStore()
+const order = ref(null)
+const loading = ref(false)
+const error = ref('')
+const paid = ref(false)
+let pollTimer = null
+
+const orderId = computed(() => {
+  const fromQuery = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  if (fromQuery) return fromQuery
+  try {
+    return globalThis.sessionStorage?.getItem('last_checkout_order_id') || ''
+  } catch {
+    return ''
+  }
+})
+
+async function loadOrderStatus() {
+  if (!orderId.value) return
+
+  loading.value = true
+  error.value = ''
+  try {
+    const { data } = await getBuyerOrderDetail(orderId.value)
+    order.value = data
+    paid.value = data.status === 'PAID'
+
+    if (paid.value) {
+      cart.clear()
+      try {
+        globalThis.sessionStorage?.removeItem('last_checkout_order_id')
+      } catch {
+      }
+      if (pollTimer) {
+        clearInterval(pollTimer)
+        pollTimer = null
+      }
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Không thể tải trạng thái đơn hàng.'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  if (!orderId.value) return
+  void loadOrderStatus()
+  pollTimer = setInterval(() => {
+    void loadOrderStatus()
+  }, 3000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
 
 <template>
@@ -19,45 +74,50 @@ const code = computed(() => hasOrder.value ? orderId.value : 'MUSA-' + Math.rand
         <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>
       </div>
 
-      <h1>{{ hasOrder ? 'Đơn hàng đã được tạo' : 'Mua tác quyền thành công 🎉' }}</h1>
+      <h1>{{ paid ? 'Thanh toán đã được xác nhận' : 'Đã quay về từ SePay' }}</h1>
       <p class="lead">
-        {{
-          hasOrder
-            ? 'Đơn hàng đã được ghi nhận trên hệ thống. Payment placeholder đang chờ bước thanh toán/gateway tiếp theo.'
-            : 'Hợp đồng số đã được kích hoạt. Bạn có thể tải về bộ tài sản tác quyền và bắt đầu sử dụng tác phẩm theo phạm vi đã mua.'
-        }}
+        {{ paid
+          ? 'IPN từ SePay đã được hệ thống ghi nhận. Đơn hàng của bạn đã chuyển sang trạng thái PAID.'
+          : 'Hệ thống đang chờ IPN từ SePay để xác nhận thanh toán. Trang này sẽ tự động kiểm tra lại trạng thái order.' }}
       </p>
 
       <div class="code-box">
-        <span>{{ hasOrder ? 'Mã đơn hàng' : 'Mã giao dịch' }}</span>
-        <strong>{{ code }}</strong>
+        <span>Mã đơn hàng</span>
+        <strong>{{ orderId || 'Chưa có orderId' }}</strong>
       </div>
 
+      <p v-if="order" class="status-line">
+        Trạng thái hiện tại: <b>{{ order.status }}</b>
+        <span v-if="order.paidAt"> · Xác nhận lúc {{ order.paidAt }}</span>
+      </p>
+      <p v-if="loading && !paid" class="status-line">Đang kiểm tra IPN...</p>
+      <p v-if="error" class="error-line">{{ error }}</p>
+
       <div class="actions">
-        <button class="btn btn-primary btn-lg">⬇ Tải bộ tài sản & hợp đồng</button>
-        <RouterLink to="/" class="btn btn-ghost btn-lg">Quay lại Khám phá</RouterLink>
+        <RouterLink to="/" class="btn btn-primary btn-lg">{{ paid ? 'Quay lại marketplace' : 'Tiếp tục chờ xác nhận' }}</RouterLink>
+        <RouterLink to="/checkout" class="btn btn-ghost btn-lg">Quay lại checkout</RouterLink>
       </div>
 
       <div class="next-steps">
         <div class="ns">
-          <span class="ns-ic">📧</span>
+          <span class="ns-ic">1</span>
           <div>
-            <strong>Email xác nhận</strong>
-            <p>Bản sao hợp đồng và hoá đơn VAT đã gửi đến email đăng ký.</p>
+            <strong>Callback UX</strong>
+            <p>SePay đã redirect trình duyệt của bạn về trang kết quả này ngay sau bước thanh toán.</p>
           </div>
         </div>
         <div class="ns">
-          <span class="ns-ic">🆔</span>
+          <span class="ns-ic">2</span>
           <div>
-            <strong>ID xác minh đa nền tảng</strong>
-            <p>Sử dụng ID này khi đăng tải lên YouTube, Facebook, TikTok để được tự động xác minh.</p>
+            <strong>IPN Server-to-Server</strong>
+            <p>Trạng thái paid chỉ được chốt khi backend nhận IPN hoặc webhook hợp lệ từ SePay.</p>
           </div>
         </div>
         <div class="ns">
-          <span class="ns-ic">📊</span>
+          <span class="ns-ic">3</span>
           <div>
-            <strong>Quản lý trên Dashboard</strong>
-            <p>Theo dõi lượt sử dụng, doanh thu monetize và lịch sử giao dịch.</p>
+            <strong>Polling trạng thái</strong>
+            <p>Trang này đang gọi API buyer order detail định kỳ để hiển thị lúc order chuyển sang `PAID`.</p>
           </div>
         </div>
       </div>
@@ -103,6 +163,9 @@ const code = computed(() => hasOrder.value ? orderId.value : 'MUSA-' + Math.rand
 }
 .code-box span { font-size: 11px; color: var(--c-text-mute); text-transform: uppercase; letter-spacing: 0.08em; }
 .code-box strong { font-size: 22px; font-weight: 800; color: var(--c-blue-700); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+
+.status-line { margin: -8px 0 24px; color: var(--c-text-soft); }
+.error-line { margin: -8px 0 24px; color: #b91c1c; }
 
 .actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 48px; }
 

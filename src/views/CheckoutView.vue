@@ -1,12 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCartStore } from '../stores/cart'
 import { formatVND } from '../data/catalog'
-import { useAuthStore } from '../modules/auth/auth.store'
 import { hasClientPermission } from '../modules/auth/auth.capabilities'
-import { createOrder } from '../modules/orders/api'
+import { useAuthStore } from '../modules/auth/auth.store'
+import { createOrder, sepayCheckout } from '../modules/orders/api'
 import { ApiError } from '../shared/api/errors'
+import { useCartStore } from '../stores/cart'
 
 const cart = useCartStore()
 const router = useRouter()
@@ -25,7 +25,6 @@ const buyer = ref({
 })
 
 const agreed = ref(false)
-const signature = ref('')
 const drawing = ref(false)
 const canvasRef = ref(null)
 let ctx = null
@@ -76,14 +75,10 @@ function clearSig() {
   hasSignature.value = false
 }
 
-const paymentMethod = ref('vnpay')
+const paymentMethod = ref('BANK_TRANSFER')
 const paymentMethods = [
-  { k: 'vnpay',  label: 'VNPay',         desc: 'Thẻ ATM nội địa, QR Pay' },
-  { k: 'visa',   label: 'Visa / MasterCard', desc: 'Thẻ tín dụng quốc tế' },
-  { k: 'momo',   label: 'Ví MoMo',        desc: 'Thanh toán qua MoMo' },
-  { k: 'bank',   label: 'Chuyển khoản',   desc: 'Phù hợp doanh nghiệp' }
+  { k: 'BANK_TRANSFER', label: 'SePay QR', desc: 'Tạo order rồi chuyển sang SePay để quét QR/chuyển khoản' }
 ]
-const card = ref({ number: '', holder: '', exp: '', cvv: '' })
 
 const canNext = computed(() => {
   if (step.value === 1) return !!(buyer.value.fullName && buyer.value.email)
@@ -95,7 +90,7 @@ const processing = ref(false)
 const orderError = ref('')
 const orderErrorCode = ref('')
 const orderErrorRequestId = ref('')
-const createdOrderId = ref('')
+const lastCreatedOrderId = ref('')
 
 function createIdempotencyKey() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -125,16 +120,42 @@ function buildCreateOrderPayload() {
         : {}
     })),
     payment: {
-      provider: 'CHECKOUT_PLACEHOLDER',
+      provider: 'SEPAY',
       method: paymentMethod.value
     },
     clientContext: {
-      source: 'web-checkout'
+      source: 'web-checkout',
+      gateway: 'sepay'
     }
   }
 }
 
-async function submitOrder() {
+function persistLastOrderId(orderId) {
+  lastCreatedOrderId.value = orderId
+  try {
+    globalThis.sessionStorage?.setItem('last_checkout_order_id', orderId)
+  } catch {
+  }
+}
+
+function submitSepayForm(payload) {
+  const form = document.createElement('form')
+  form.method = payload.method
+  form.action = payload.actionUrl
+
+  for (const [name, value] of Object.entries(payload.fields || {})) {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = name
+    input.value = String(value)
+    form.appendChild(input)
+  }
+
+  document.body.appendChild(form)
+  form.submit()
+}
+
+async function payWithSepay() {
   if (!cart.items.length) {
     router.replace('/cart')
     return
@@ -156,19 +177,25 @@ async function submitOrder() {
   orderErrorRequestId.value = ''
 
   try {
-    const res = await createOrder(buildCreateOrderPayload(), createIdempotencyKey())
-    createdOrderId.value = res.data.orderId
-    cart.clear()
-    router.push({ name: 'success', query: { orderId: res.data.orderId } })
+    const orderRes = await createOrder(buildCreateOrderPayload(), createIdempotencyKey())
+    const orderId = orderRes.data.orderId
+    persistLastOrderId(orderId)
+
+    const checkoutRes = await sepayCheckout({
+      orderId,
+      paymentMethod: paymentMethod.value
+    })
+
+    submitSepayForm(checkoutRes.data)
   } catch (error) {
     if (error instanceof ApiError) {
-      orderError.value = error.message || 'Không thể tạo đơn hàng.'
+      orderError.value = error.message || 'Không thể khởi tạo thanh toán SePay.'
       orderErrorCode.value = error.code || ''
       orderErrorRequestId.value = error.requestId || ''
     } else if (error instanceof Error) {
-      orderError.value = error.message || 'Không thể tạo đơn hàng.'
+      orderError.value = error.message || 'Không thể khởi tạo thanh toán SePay.'
     } else {
-      orderError.value = 'Không thể tạo đơn hàng.'
+      orderError.value = 'Không thể khởi tạo thanh toán SePay.'
     }
   } finally {
     processing.value = false
@@ -182,7 +209,7 @@ function next() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
     return
   }
-  void submitOrder()
+  void payWithSepay()
 }
 function back() { if (step.value > 1) step.value-- }
 
@@ -204,27 +231,10 @@ onMounted(async () => {
   buyer.value.email = auth.me?.user?.email || auth.currentUser?.email || ''
   buyer.value.phone = auth.me?.user?.phoneNumber || ''
 
-  if (auth.isAuthenticated && canManageOrder() && cart.items.length && !createdOrderId.value) {
-    processing.value = true
-    orderError.value = ''
-    orderErrorCode.value = ''
-    orderErrorRequestId.value = ''
-    try {
-      const res = await createOrder(buildCreateOrderPayload(), createIdempotencyKey())
-      createdOrderId.value = res.data.orderId
-    } catch (error) {
-      if (error instanceof ApiError) {
-        orderError.value = error.message || 'Không thể tạo đơn hàng.'
-        orderErrorCode.value = error.code || ''
-        orderErrorRequestId.value = error.requestId || ''
-      } else if (error instanceof Error) {
-        orderError.value = error.message || 'Không thể tạo đơn hàng.'
-      } else {
-        orderError.value = 'Không thể tạo đơn hàng.'
-      }
-    } finally {
-      processing.value = false
-    }
+  try {
+    lastCreatedOrderId.value = globalThis.sessionStorage?.getItem('last_checkout_order_id') || ''
+  } catch {
+    lastCreatedOrderId.value = ''
   }
 })
 </script>
@@ -347,7 +357,7 @@ onMounted(async () => {
             <!-- STEP 3: Payment -->
             <div v-else key="s3" class="panel">
               <h2>Phương thức thanh toán</h2>
-              <p class="panel-sub">Hợp đồng sẽ kích hoạt ngay sau khi giao dịch thành công.</p>
+              <p class="panel-sub">Hệ thống sẽ tạo order rồi chuyển sang SePay để bạn thanh toán thật.</p>
 
               <div class="pay-methods">
                 <button v-for="m in paymentMethods" :key="m.k"
@@ -362,44 +372,21 @@ onMounted(async () => {
                 </button>
               </div>
 
-              <transition name="swap" mode="out-in">
-                <div v-if="paymentMethod === 'visa'" key="card" class="card-form">
-                  <h4>Thông tin thẻ</h4>
-                  <div class="form-grid">
-                    <label class="ff full"><span>Số thẻ</span><input v-model="card.number" placeholder="•••• •••• •••• ••••" /></label>
-                    <label class="ff full"><span>Chủ thẻ</span><input v-model="card.holder" placeholder="NGUYEN VAN A" /></label>
-                    <label class="ff"><span>Hết hạn (MM/YY)</span><input v-model="card.exp" placeholder="08/29" /></label>
-                    <label class="ff"><span>CVV</span><input v-model="card.cvv" placeholder="•••" type="password" /></label>
-                  </div>
+              <div class="bank-pay">
+                <h4>Thanh toán thật qua SePay</h4>
+                <div class="bank-info">
+                  <div><span>Cổng thanh toán</span><b>SePay</b></div>
+                  <div><span>Kiểu giao dịch</span><b>QR chuyển khoản</b></div>
+                  <div><span>Xác nhận thanh toán</span><b>IPN/Webhook</b></div>
+                  <div><span>Kết quả người dùng</span><b>Redirect + polling order</b></div>
                 </div>
-                <div v-else-if="paymentMethod === 'vnpay' || paymentMethod === 'momo'" key="qr" class="qr-pay">
-                  <div class="qr-box">
-                    <div class="qr-grid">
-                      <div v-for="i in 144" :key="i" :style="{ background: (i*13+i%7)%3 ? '#0c1e33' : 'transparent' }"></div>
-                    </div>
-                  </div>
-                  <div class="qr-info">
-                    <h4>Quét mã QR để thanh toán</h4>
-                    <p>Mở ứng dụng {{ paymentMethod === 'vnpay' ? 'ngân hàng / VNPay' : 'MoMo' }} và quét mã để hoàn tất.</p>
-                    <ul>
-                      <li>✓ Mã QR có hiệu lực trong 10:00</li>
-                      <li>✓ Tự động xác nhận khi nhận được tiền</li>
-                    </ul>
-                  </div>
-                </div>
-                <div v-else key="bank" class="bank-pay">
-                  <h4>Thông tin chuyển khoản</h4>
-                  <div class="bank-info">
-                    <div><span>Ngân hàng</span><b>Vietcombank</b></div>
-                    <div><span>Số tài khoản</span><b>0123 4567 890</b></div>
-                    <div><span>Chủ tài khoản</span><b>CÔNG TY CỔ PHẦN MUSICA</b></div>
-                    <div><span>Nội dung CK</span><b class="hl">MUSA {{ Date.now().toString(36).toUpperCase().slice(-6) }}</b></div>
-                  </div>
-                </div>
-              </transition>
+                <p v-if="lastCreatedOrderId" class="sepay-last">
+                  Order gần nhất: <b>{{ lastCreatedOrderId }}</b>
+                </p>
+              </div>
 
               <div v-if="orderError" class="order-error">
-                <div class="oe-title">Không thể tạo đơn hàng</div>
+                <div class="oe-title">Không thể khởi tạo thanh toán</div>
                 <div class="oe-msg">{{ orderError }}</div>
                 <div v-if="orderErrorCode" class="oe-meta">Mã lỗi: <b>{{ orderErrorCode }}</b></div>
                 <div v-if="orderErrorRequestId" class="oe-meta">Request ID: <b>{{ orderErrorRequestId }}</b></div>
@@ -410,7 +397,7 @@ onMounted(async () => {
           <div class="step-actions">
             <button v-if="step > 1" class="btn btn-ghost" @click="back">← Quay lại</button>
             <button :class="['btn btn-primary btn-lg', { 'is-loading': processing }]" :disabled="!canNext || processing" @click="next">
-              <span v-if="!processing">{{ step === 3 ? `Tạo đơn ${formatVND(cart.total)}` : 'Tiếp tục →' }}</span>
+              <span v-if="!processing">{{ step === 3 ? `Thanh toán ${formatVND(cart.total)}` : 'Tiếp tục →' }}</span>
               <span v-else class="spinner"></span>
             </button>
           </div>
@@ -640,6 +627,7 @@ onMounted(async () => {
 .bank-info span { display: block; font-size: 11.5px; color: var(--c-text-mute); text-transform: uppercase; letter-spacing: 0.06em; }
 .bank-info b { font-size: 14px; }
 .bank-info b.hl { color: var(--c-teal-600); font-variant-numeric: tabular-nums; }
+.sepay-last { margin: 14px 4px 0; color: var(--c-text-soft); font-size: 13px; }
 .order-error {
   margin-top: 16px;
   padding: 12px 14px;

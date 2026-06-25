@@ -17,7 +17,14 @@ import 'floating-vue/dist/style.css'
 
 export const createApp = ViteSSG(
   App,
-  { routes },
+  {
+    routes,
+    scrollBehavior(to, from, savedPosition) {
+      if (savedPosition) return savedPosition
+      if (to.hash) return { el: to.hash }
+      return { left: 0, top: 0 }
+    }
+  },
   ({ app, router }) => {
     const pinia = createPinia()
     app.use(pinia)

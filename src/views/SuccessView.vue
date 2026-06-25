@@ -1,6 +1,11 @@
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { RouterLink } from 'vue-router'
-const code = 'MUSA-' + Math.random().toString(36).toUpperCase().slice(-8)
+const route = useRoute()
+const orderId = computed(() => typeof route.query.orderId === 'string' ? route.query.orderId : '')
+const hasOrder = computed(() => orderId.value.length > 0)
+const code = computed(() => hasOrder.value ? orderId.value : 'MUSA-' + Math.random().toString(36).toUpperCase().slice(-8))
 </script>
 
 <template>
@@ -14,11 +19,17 @@ const code = 'MUSA-' + Math.random().toString(36).toUpperCase().slice(-8)
         <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>
       </div>
 
-      <h1>Mua tác quyền thành công 🎉</h1>
-      <p class="lead">Hợp đồng số đã được kích hoạt. Bạn có thể tải về bộ tài sản tác quyền và bắt đầu sử dụng tác phẩm theo phạm vi đã mua.</p>
+      <h1>{{ hasOrder ? 'Đơn hàng đã được tạo' : 'Mua tác quyền thành công 🎉' }}</h1>
+      <p class="lead">
+        {{
+          hasOrder
+            ? 'Đơn hàng đã được ghi nhận trên hệ thống. Payment placeholder đang chờ bước thanh toán/gateway tiếp theo.'
+            : 'Hợp đồng số đã được kích hoạt. Bạn có thể tải về bộ tài sản tác quyền và bắt đầu sử dụng tác phẩm theo phạm vi đã mua.'
+        }}
+      </p>
 
       <div class="code-box">
-        <span>Mã giao dịch</span>
+        <span>{{ hasOrder ? 'Mã đơn hàng' : 'Mã giao dịch' }}</span>
         <strong>{{ code }}</strong>
       </div>
 

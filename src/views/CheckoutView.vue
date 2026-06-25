@@ -1,22 +1,27 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 import { formatVND } from '../data/catalog'
+import { useAuthStore } from '../modules/auth/auth.store'
+import { hasClientPermission } from '../modules/auth/auth.capabilities'
+import { createOrder } from '../modules/orders/api'
+import { ApiError } from '../shared/api/errors'
 
 const cart = useCartStore()
 const router = useRouter()
+const auth = useAuthStore()
 
 const step = ref(1) // 1: review/buyer info, 2: contract, 3: payment
 const steps = ['Thông tin & xem lại', 'Ký hợp đồng tác quyền', 'Thanh toán']
 
 const buyer = ref({
-  fullName: 'Nguyễn Văn Creator',
-  email: 'creator@studio.vn',
-  phone: '0901 234 567',
-  org: 'Skyline Studio',
-  taxId: '0312345678',
-  channel: 'youtube.com/@skylinestudio'
+  fullName: '',
+  email: '',
+  phone: '',
+  org: '',
+  taxId: '',
+  channel: ''
 })
 
 const agreed = ref(false)
@@ -87,6 +92,89 @@ const canNext = computed(() => {
 })
 
 const processing = ref(false)
+const orderError = ref('')
+const orderErrorCode = ref('')
+const orderErrorRequestId = ref('')
+const createdOrderId = ref('')
+
+function createIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+function canManageOrder() {
+  return hasClientPermission({
+    isAuthenticated: auth.isAuthenticated,
+    roles: auth.roles,
+    currentUser: auth.currentUser,
+    me: auth.me
+  }, 'manage_order')
+}
+
+function buildCreateOrderPayload() {
+  return {
+    buyer: {
+      fullName: buyer.value.fullName.trim()
+    },
+    items: cart.items.map((item) => ({
+      productId: item.productId,
+      quantity: Number(item.qty || 1),
+      selectedUsageRights: Array.isArray(item.selectedUsageRights) ? item.selectedUsageRights : [],
+      pricingAttributes: item.pricingAttributes && typeof item.pricingAttributes === 'object'
+        ? item.pricingAttributes
+        : {}
+    })),
+    payment: {
+      provider: 'CHECKOUT_PLACEHOLDER',
+      method: paymentMethod.value
+    },
+    clientContext: {
+      source: 'web-checkout'
+    }
+  }
+}
+
+async function submitOrder() {
+  if (!cart.items.length) {
+    router.replace('/cart')
+    return
+  }
+
+  auth.hydrate()
+  if (!auth.isAuthenticated) {
+    router.replace({ name: 'login', query: { redirect: '/checkout' } })
+    return
+  }
+  if (!canManageOrder()) {
+    orderError.value = 'Tài khoản Buyer hiện không có quyền thao tác đơn hàng.'
+    return
+  }
+
+  processing.value = true
+  orderError.value = ''
+  orderErrorCode.value = ''
+  orderErrorRequestId.value = ''
+
+  try {
+    const res = await createOrder(buildCreateOrderPayload(), createIdempotencyKey())
+    createdOrderId.value = res.data.orderId
+    cart.clear()
+    router.push({ name: 'success', query: { orderId: res.data.orderId } })
+  } catch (error) {
+    if (error instanceof ApiError) {
+      orderError.value = error.message || 'Không thể tạo đơn hàng.'
+      orderErrorCode.value = error.code || ''
+      orderErrorRequestId.value = error.requestId || ''
+    } else if (error instanceof Error) {
+      orderError.value = error.message || 'Không thể tạo đơn hàng.'
+    } else {
+      orderError.value = 'Không thể tạo đơn hàng.'
+    }
+  } finally {
+    processing.value = false
+  }
+}
+
 function next() {
   if (!canNext.value) return
   if (step.value < 3) {
@@ -94,15 +182,51 @@ function next() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
     return
   }
-  // pay
-  processing.value = true
-  setTimeout(() => {
-    processing.value = false
-    cart.clear()
-    router.push('/success')
-  }, 1600)
+  void submitOrder()
 }
 function back() { if (step.value > 1) step.value-- }
+
+onMounted(async () => {
+  auth.hydrate()
+  if (auth.accessToken && !auth.me) {
+    try {
+      await auth.hydrateMe()
+    } catch {
+    }
+  }
+
+  if (!cart.items.length) {
+    router.replace('/cart')
+    return
+  }
+
+  buyer.value.fullName = auth.me?.user?.fullName || auth.currentUser?.fullName || ''
+  buyer.value.email = auth.me?.user?.email || auth.currentUser?.email || ''
+  buyer.value.phone = auth.me?.user?.phoneNumber || ''
+
+  if (auth.isAuthenticated && canManageOrder() && cart.items.length && !createdOrderId.value) {
+    processing.value = true
+    orderError.value = ''
+    orderErrorCode.value = ''
+    orderErrorRequestId.value = ''
+    try {
+      const res = await createOrder(buildCreateOrderPayload(), createIdempotencyKey())
+      createdOrderId.value = res.data.orderId
+    } catch (error) {
+      if (error instanceof ApiError) {
+        orderError.value = error.message || 'Không thể tạo đơn hàng.'
+        orderErrorCode.value = error.code || ''
+        orderErrorRequestId.value = error.requestId || ''
+      } else if (error instanceof Error) {
+        orderError.value = error.message || 'Không thể tạo đơn hàng.'
+      } else {
+        orderError.value = 'Không thể tạo đơn hàng.'
+      }
+    } finally {
+      processing.value = false
+    }
+  }
+})
 </script>
 
 <template>
@@ -273,13 +397,20 @@ function back() { if (step.value > 1) step.value-- }
                   </div>
                 </div>
               </transition>
+
+              <div v-if="orderError" class="order-error">
+                <div class="oe-title">Không thể tạo đơn hàng</div>
+                <div class="oe-msg">{{ orderError }}</div>
+                <div v-if="orderErrorCode" class="oe-meta">Mã lỗi: <b>{{ orderErrorCode }}</b></div>
+                <div v-if="orderErrorRequestId" class="oe-meta">Request ID: <b>{{ orderErrorRequestId }}</b></div>
+              </div>
             </div>
           </transition>
 
           <div class="step-actions">
             <button v-if="step > 1" class="btn btn-ghost" @click="back">← Quay lại</button>
             <button :class="['btn btn-primary btn-lg', { 'is-loading': processing }]" :disabled="!canNext || processing" @click="next">
-              <span v-if="!processing">{{ step === 3 ? `Thanh toán ${formatVND(cart.total)}` : 'Tiếp tục →' }}</span>
+              <span v-if="!processing">{{ step === 3 ? `Tạo đơn ${formatVND(cart.total)}` : 'Tiếp tục →' }}</span>
               <span v-else class="spinner"></span>
             </button>
           </div>
@@ -509,6 +640,19 @@ function back() { if (step.value > 1) step.value-- }
 .bank-info span { display: block; font-size: 11.5px; color: var(--c-text-mute); text-transform: uppercase; letter-spacing: 0.06em; }
 .bank-info b { font-size: 14px; }
 .bank-info b.hl { color: var(--c-teal-600); font-variant-numeric: tabular-nums; }
+.order-error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: #fff1f2;
+  color: #b91c1c;
+  font-size: 13px;
+}
+.oe-title { font-weight: 900; letter-spacing: -0.01em; color: #7f1d1d; }
+.oe-msg { margin-top: 4px; }
+.oe-meta { margin-top: 6px; color: #9f1239; font-size: 12.5px; }
+.oe-meta b { color: #7f1d1d; font-variant-numeric: tabular-nums; }
 
 /* Actions */
 .step-actions {

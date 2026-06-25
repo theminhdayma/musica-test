@@ -1,5 +1,6 @@
 export type AuthRole = 'SUPER_ADMIN' | 'ADMIN' | 'ARTIST' | 'BUYER'
 export type ClientRole = 'BUYER' | 'ARTIST'
+export type ClientPermission = 'manage_order'
 
 export type AuthUser = {
   id: string

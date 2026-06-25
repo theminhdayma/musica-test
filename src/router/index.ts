@@ -17,8 +17,18 @@ export const routes = [
       return true
     }
   },
-  { path: '/cart', name: 'cart', component: () => import('../pages/cart/index.page.vue') },
-  { path: '/checkout', name: 'checkout', component: () => import('../pages/checkout/index.page.vue') },
+  {
+    path: '/cart',
+    name: 'cart',
+    component: () => import('../pages/cart/index.page.vue'),
+    meta: { requiresAuth: true, requiredRoles: ['BUYER'], requiredPermissions: ['manage_order'] }
+  },
+  {
+    path: '/checkout',
+    name: 'checkout',
+    component: () => import('../pages/checkout/index.page.vue'),
+    meta: { requiresAuth: true, requiredRoles: ['BUYER'], requiredPermissions: ['manage_order'] }
+  },
   { path: '/success', name: 'success', component: () => import('../pages/success/index.page.vue') },
   
   // Auth Routes

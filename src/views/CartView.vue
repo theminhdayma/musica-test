@@ -1,14 +1,77 @@
 <script setup>
+import { computed, ref } from 'vue'
 import { useCartStore } from '../stores/cart'
 import { formatVND } from '../data/catalog'
 import { useRouter, RouterLink } from 'vue-router'
+import { useAuthStore } from '../modules/auth/auth.store'
+import { hasClientPermission } from '../modules/auth/auth.capabilities'
+import AddProductToCartModal from '../components/cart/AddProductToCartModal.vue'
+import EditCartItemModal from '../components/cart/EditCartItemModal.vue'
+import ConfirmModal from '../shared/ui/modals/ConfirmModal.vue'
 
 const cart = useCartStore()
 const router = useRouter()
+const auth = useAuthStore()
+const addModalOpen = ref(false)
+const editModalOpen = ref(false)
+const duplicateModalOpen = ref(false)
+const editingLineId = ref('')
+const editingItem = computed(() => cart.items.find((i) => i.lineId === editingLineId.value) || null)
 
 function goCheckout() {
   if (!cart.items.length) return
+  auth.hydrate()
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: '/checkout' } })
+    return
+  }
+  if (!hasClientPermission({
+    isAuthenticated: auth.isAuthenticated,
+    roles: auth.roles,
+    currentUser: auth.currentUser,
+    me: auth.me
+  }, 'manage_order')) {
+    alert('Tài khoản Buyer hiện không có quyền thao tác đơn hàng.')
+    return
+  }
   router.push('/checkout')
+}
+
+function openAddModal() {
+  addModalOpen.value = true
+}
+
+function openEdit(item) {
+  editingLineId.value = item?.lineId || ''
+  if (!editingLineId.value) return
+  editModalOpen.value = true
+}
+
+function onSaveEdit(patch) {
+  if (!editingLineId.value) return
+  const result = cart.update(editingLineId.value, patch)
+  if (!result?.ok) {
+    if (result?.reason === 'duplicate') {
+      duplicateModalOpen.value = true
+    }
+    return
+  }
+  editModalOpen.value = false
+  editingLineId.value = ''
+}
+
+function closeEdit() {
+  editModalOpen.value = false
+  editingLineId.value = ''
+}
+
+function getCoverStyle(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return { background: 'var(--grad-brand)' }
+  if (raw.startsWith('http') || raw.startsWith('data:')) {
+    return { backgroundImage: `url(${raw})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+  }
+  return { background: raw }
 }
 </script>
 
@@ -21,7 +84,10 @@ function goCheckout() {
           <h1>Giỏ hàng của bạn</h1>
           <p>Xem lại các gói tác quyền bạn đã cấu hình trước khi ký hợp đồng.</p>
         </div>
-        <RouterLink to="/" class="btn btn-ghost">← Tiếp tục mua sắm</RouterLink>
+        <div class="head-actions">
+          <button class="icon-plus" type="button" aria-label="Thêm sản phẩm" @click="openAddModal">+</button>
+          <RouterLink to="/" class="btn btn-ghost">← Tiếp tục mua sắm</RouterLink>
+        </div>
       </div>
 
       <div v-if="!cart.items.length" class="empty-cart">
@@ -35,11 +101,19 @@ function goCheckout() {
         <div class="lines">
           <transition-group name="line">
             <div v-for="item in cart.items" :key="item.lineId" class="line-row">
-              <div class="cover" :style="{ background: item.cover }"></div>
+              <div class="cover" :style="getCoverStyle(item.cover)" aria-hidden="true"></div>
               <div class="info">
                 <div class="line-head">
                   <h3>{{ item.title }}</h3>
-                  <button class="remove" @click="cart.remove(item.lineId)" aria-label="Xoá">✕</button>
+                  <div class="line-actions">
+                    <button class="edit" type="button" aria-label="Sửa" @click="openEdit(item)">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                      </svg>
+                    </button>
+                    <button class="remove" type="button" @click="cart.remove(item.lineId)" aria-label="Xoá">✕</button>
+                  </div>
                 </div>
                 <p class="artist">{{ item.artist }}</p>
                 <div class="config">
@@ -71,6 +145,25 @@ function goCheckout() {
           </ul>
         </aside>
       </div>
+
+      <AddProductToCartModal :open="addModalOpen" @close="addModalOpen = false" />
+
+      <EditCartItemModal
+        :open="editModalOpen"
+        :item="editingItem"
+        @close="closeEdit"
+        @save="onSaveEdit"
+      />
+
+      <ConfirmModal
+        :open="duplicateModalOpen"
+        title="Sản phẩm đã tồn tại"
+        message="Sản phẩm số với cấu hình này đã tồn tại trong giỏ hàng."
+        confirm-text="OK"
+        cancel-text="Đóng"
+        @close="duplicateModalOpen = false"
+        @confirm="duplicateModalOpen = false"
+      />
     </div>
   </section>
 </template>
@@ -80,6 +173,19 @@ function goCheckout() {
 .page-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 32px; }
 .page-head h1 { margin: 12px 0 6px; font-size: clamp(26px, 3.4vw, 38px); letter-spacing: -0.02em; }
 .page-head p { margin: 0; color: var(--c-text-soft); }
+.head-actions { display: flex; align-items: center; gap: 10px; }
+.icon-plus {
+  width: 38px; height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--c-border);
+  background: #fff;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--c-blue-700);
+  display: grid;
+  place-items: center;
+}
+.icon-plus:hover { background: var(--c-bg-soft); border-color: var(--c-border-strong); }
 
 .empty-cart {
   background: #fff;
@@ -121,6 +227,13 @@ function goCheckout() {
 .info { min-width: 0; }
 .line-head { display: flex; justify-content: space-between; gap: 8px; }
 .line-head h3 { margin: 0; font-size: 16px; }
+.line-actions { display: flex; align-items: center; gap: 8px; }
+.edit {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--c-bg-soft); border: 1px solid var(--c-border);
+  color: var(--c-text-soft);
+}
+.edit:hover { background: #eef6ff; color: var(--c-blue-700); border-color: #cfe1ff; }
 .remove {
   width: 30px; height: 30px; border-radius: 50%;
   background: var(--c-bg-soft); border: 1px solid var(--c-border);

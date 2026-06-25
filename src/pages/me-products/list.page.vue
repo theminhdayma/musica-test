@@ -2,11 +2,11 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Dialog from 'primevue/dialog'
-import Message from 'primevue/message'
 import { ApiError } from '../../shared/api/errors'
 import { useAsyncResource } from '../../shared/lib/useAsyncResource'
-import ErrorState from '../../shared/ui/states/ErrorState.vue'
 import SkeletonCard from '../../shared/ui/skeleton/SkeletonCard.vue'
+import MeAccountLayout from '../../components/features/me/MeAccountLayout.vue'
+import HintIcon from '../../shared/ui/HintIcon.vue'
 import {
   confirmMyProductAudioUpload,
   confirmMyProductSheetMusicUpload,
@@ -210,7 +210,6 @@ const pageEnd = computed(() => {
   return Math.min(meta.value.page * meta.value.pageSize, meta.value.totalItems)
 })
 
-const requestId = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.requestId : null))
 const errorMessage = computed(() => (resource.error.value instanceof ApiError ? resource.error.value.message : resource.error.value instanceof Error ? resource.error.value.message : 'Không thể tải dữ liệu'))
 
 function reload() {
@@ -376,461 +375,1092 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="artist-scope container section">
-    <div class="flex min-w-0 flex-col gap-4 pb-8 sm:gap-5 lg:gap-6">
-      <section class="rounded-2xl border p-4 sm:p-5" style="border-color: var(--admin-border); background: var(--admin-surface-0); box-shadow: var(--admin-elev-1)">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div class="min-w-0">
-            <div class="flex items-center gap-3">
-              <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-600)]">
-                <i class="pi pi-wave-pulse" />
-              </div>
-              <div class="min-w-0">
-                <h1 class="truncate text-lg font-semibold" style="color: var(--admin-text)">Quản lý sản phẩm</h1>
-                <p class="mt-1 text-sm" style="color: var(--admin-text-muted)">
-                  Danh sách sản phẩm của bạn. Bạn có thể tạo mới và điều hướng sang trang chi tiết để cấu hình.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              class="inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1"
-              style="border-color: transparent; background: var(--admin-primary-button-bg); color: var(--admin-primary-button-text)"
-              @click="openCreateDialog"
-            >
-              <i class="pi pi-plus text-xs" />
-              Thêm sản phẩm
-            </button>
-          </div>
-        </div>
-      </section>
+  <MeAccountLayout active="products">
+    <div class="pm-root">
 
-      <section class="rounded-2xl border p-4 sm:p-5" style="border-color: var(--admin-border); background: var(--admin-surface-0); box-shadow: var(--admin-elev-1)">
-        <div class="flex flex-col gap-3">
-          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label
-              class="flex h-9 w-full items-center overflow-hidden rounded-lg border bg-[color:var(--admin-surface-0)] transition [border-color:var(--admin-border)] focus-within:[border-color:var(--admin-primary-500)] focus-within:ring-2 focus-within:ring-[color:var(--admin-ring)]"
-            >
-              <span class="flex h-full w-10 shrink-0 items-center justify-center border-r text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]">
-                <i class="pi pi-search" />
-              </span>
-              <input
-                v-model="filters.keyword"
-                type="text"
-                placeholder="Tìm theo tên, tác giả hoặc thể loại..."
-                class="h-full w-full border-0 bg-transparent px-3 text-sm text-[color:var(--admin-text)] outline-none placeholder:text-[color:var(--admin-text-muted)]"
-                @keydown.enter.prevent="page = 1; reload()"
+      <!-- Page header -->
+      <div class="pm-header">
+        <div class="pm-header-left">
+          <div class="pm-header-icon">
+            <i class="pi pi-wave-pulse"></i>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <h1 class="pm-title">Quản lý sản phẩm</h1>
+              <HintIcon
+                placement="bottom"
+                content="Đây là nơi bạn quản lý toàn bộ tác phẩm âm nhạc. Mỗi sản phẩm cần được upload file audio gốc (MP3) và ảnh đại diện trước khi có thể cấu hình giá và chờ duyệt để xuất bản lên chợ."
               />
-            </label>
+            </div>
+            <p class="pm-sub">Danh sách tác phẩm âm nhạc của bạn · Tạo mới và cấu hình chi tiết</p>
+          </div>
+        </div>
+        <button type="button" class="pm-btn-add" @click="openCreateDialog">
+          <i class="pi pi-plus"></i>
+          Thêm sản phẩm
+        </button>
+      </div>
 
-            <label
-              class="flex h-9 w-full items-center overflow-hidden rounded-lg border bg-[color:var(--admin-surface-0)] transition [border-color:var(--admin-border)] focus-within:[border-color:var(--admin-primary-500)] focus-within:ring-2 focus-within:ring-[color:var(--admin-ring)] sm:w-[240px]"
+      <!-- Filters + list card -->
+      <div class="pm-card">
+
+        <!-- Filter bar -->
+        <div class="pm-filters">
+          <label class="pm-search-wrap">
+            <i class="pi pi-search pm-search-icon"></i>
+            <input
+              v-model="filters.keyword"
+              type="text"
+              placeholder="Tìm theo tên, tác giả hoặc thể loại..."
+              class="pm-search-input"
+              @keydown.enter.prevent="page = 1; reload()"
+            />
+          </label>
+
+          <label class="pm-select-wrap">
+            <i class="pi pi-tag pm-select-icon"></i>
+            <select
+              v-model="filters.status"
+              class="pm-select"
+              @change="page = 1; reload()"
             >
-              <span class="flex h-full w-10 shrink-0 items-center justify-center border-r text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]">
-                <i class="pi pi-tag" />
-              </span>
-              <select
-                v-model="filters.status"
-                class="h-full w-full appearance-none border-0 bg-transparent px-3 text-sm text-[color:var(--admin-text)] outline-none"
-                @change="page = 1; reload()"
-              >
-                <option value="ALL">Tất cả</option>
-                <option value="PENDING">Pending</option>
-                <option value="PUBLISHED">Published</option>
-                <option value="HIDDEN">Hidden</option>
-              </select>
-              <span class="mr-3 text-xs text-[color:var(--admin-text-muted)]">
-                <i class="pi pi-chevron-down" />
-              </span>
-            </label>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span class="text-xs" style="color: var(--admin-text-muted)">
-              <span class="font-semibold" style="color: var(--admin-text)">{{ totalItems }}</span> sản phẩm
-              <template v-if="totalItems > 0"> · {{ pageStart }}–{{ pageEnd }}</template>
-            </span>
-          </div>
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="PENDING">Chờ duyệt</option>
+              <option value="PUBLISHED">Đã xuất bản</option>
+              <option value="HIDDEN">Đã ẩn</option>
+            </select>
+            <i class="pi pi-chevron-down pm-select-caret"></i>
+          </label>
         </div>
 
-        <div class="mt-4 space-y-3">
-          <Message v-if="resource.status.value === 'error'" severity="error">{{ errorMessage }}</Message>
+        <!-- Count line -->
+        <div class="pm-count-row">
+          <span class="pm-count">
+            <strong>{{ totalItems }}</strong> sản phẩm
+            <template v-if="totalItems > 0"> · hiển thị {{ pageStart }}–{{ pageEnd }}</template>
+          </span>
         </div>
 
-        <div class="mt-4 grid gap-2 sm:hidden">
-          <div v-if="resource.status.value === 'loading' || resource.status.value === 'idle'" v-for="i in 4" :key="`msk-${i}`" class="rounded-xl border p-4" style="border-color: var(--admin-border); background: var(--admin-surface-0)">
-            <div class="flex items-start gap-3">
-              <div class="h-12 w-12 shrink-0 animate-pulse rounded-lg" style="background: var(--admin-surface-2)" />
-              <div class="flex-1 space-y-2">
-                <div class="h-3.5 w-40 animate-pulse rounded" style="background: var(--admin-surface-2)" />
-                <div class="h-3 w-28 animate-pulse rounded" style="background: var(--admin-surface-2)" />
+        <!-- Error -->
+        <div v-if="resource.status.value === 'error'" class="pm-error-banner">
+          <i class="pi pi-exclamation-triangle"></i>
+          {{ errorMessage }}
+        </div>
+
+        <!-- ── Mobile cards ── -->
+        <div class="pm-mobile-list">
+          <!-- Skeleton -->
+          <template v-if="resource.status.value === 'loading' || resource.status.value === 'idle'">
+            <div v-for="i in 4" :key="`msk-${i}`" class="pm-track-card pm-skeleton">
+              <div class="pm-skeleton-thumb"></div>
+              <div class="pm-skeleton-lines">
+                <div class="pm-skeleton-line pm-skeleton-line--lg"></div>
+                <div class="pm-skeleton-line pm-skeleton-line--sm"></div>
               </div>
             </div>
+          </template>
+
+          <!-- Empty -->
+          <div v-else-if="items.length === 0" class="pm-empty">
+            <i class="pi pi-music pm-empty-icon"></i>
+            <div class="pm-empty-title">Chưa có sản phẩm nào</div>
+            <div class="pm-empty-sub">Bắt đầu bằng cách thêm tác phẩm đầu tiên của bạn</div>
           </div>
 
-          <article
-            v-else
-            v-for="track in items"
-            :key="track.id"
-            class="rounded-xl border p-4"
-            style="border-color: var(--admin-border); background: var(--admin-surface-0)"
-          >
-            <div class="flex items-start gap-3">
-              <div class="h-12 w-12 shrink-0 overflow-hidden rounded-lg border" style="border-color: var(--admin-border)">
-                <div class="flex h-full w-full items-center justify-center text-xs font-bold" style="background: var(--admin-primary-50); color: var(--admin-primary-700)">
-                  {{ track.title.slice(0, 2).toUpperCase() }}
-                </div>
+          <!-- Items -->
+          <article v-else v-for="track in items" :key="track.id" class="pm-track-card">
+            <div class="pm-track-thumb">
+              <span class="pm-track-initials">{{ track.title.slice(0, 2).toUpperCase() }}</span>
+              <div class="pm-track-thumb-glow"></div>
+            </div>
+            <div class="pm-track-info">
+              <div class="pm-track-title">{{ track.title }}</div>
+              <div class="pm-track-author">
+                <i class="pi pi-user" style="font-size:10px;"></i>
+                <span v-if="track.authorName">{{ track.authorName }}</span>
+                <span v-else class="pm-track-id">#{{ (track.artistId || '—').slice(0, 8) }}</span>
               </div>
-              <div class="min-w-0 flex-1">
-                <h3 class="truncate text-[13px] font-semibold leading-tight" style="color: var(--admin-text)">{{ track.title }}</h3>
-                <p class="mt-0.5 truncate text-[11px]" style="color: var(--admin-text-muted)">
-                  <span v-if="track.authorName">{{ track.authorName }}</span>
-                  <span v-else class="font-mono opacity-60">#{{ (track.artistId || '—').slice(0, 8) }}</span>
-                </p>
-                <p class="mt-0.5 text-[10px]" style="color: var(--admin-text-muted); opacity: 0.75">
-                  {{ resolveGenresDisplay(track.genres) }} · {{ formatDuration(track.duration) }}
-                </p>
+              <div class="pm-track-meta">
+                <span class="pm-meta-chip">{{ resolveGenresDisplay(track.genres) }}</span>
+                <span class="pm-meta-dot">·</span>
+                <span>{{ formatDuration(track.duration) }}</span>
               </div>
             </div>
-
-            <div class="mt-3 flex flex-wrap items-center gap-1.5">
-              <span
-                class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                style="border-color: var(--admin-border); background: var(--admin-surface-1); color: var(--admin-text)"
-              >
-                <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                {{ track.status }}
+            <div class="pm-track-right">
+              <span class="pm-status-badge" :class="`pm-status--${track.status.toLowerCase()}`">
+                <span class="pm-status-dot"></span>
+                {{ track.status === 'PENDING' ? 'Chờ duyệt' : track.status === 'PUBLISHED' ? 'Xuất bản' : 'Đã ẩn' }}
               </span>
-            </div>
-
-            <p class="mt-2 text-[10px]" style="color: var(--admin-text-muted)">
-              <i class="pi pi-clock text-[9px]" /> {{ formatDateTime(track.updatedAt || track.createdAt) }}
-            </p>
-
-            <div class="mt-3 flex gap-2 border-t pt-3" style="border-color: var(--admin-border)">
               <RouterLink
-                class="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1"
-                style="border-color: transparent; background: var(--admin-primary-button-bg); color: var(--admin-primary-button-text)"
+                class="pm-btn-detail"
                 :to="{ name: 'my-product-detail', params: { productId: track.id } }"
               >
-                Chi tiết
-                <i class="pi pi-arrow-right text-xs" />
+                Chi tiết <i class="pi pi-arrow-right" style="font-size:10px;"></i>
               </RouterLink>
             </div>
           </article>
-
-          <div
-            v-if="resource.status.value === 'success' && items.length === 0"
-            class="rounded-xl border border-dashed px-4 py-12 text-center"
-            style="border-color: var(--admin-border); background: var(--admin-surface-0)"
-          >
-            <i class="pi pi-folder-open text-2xl opacity-40" style="color: var(--admin-text-muted)" />
-            <p class="mt-2 text-sm font-medium" style="color: var(--admin-text-muted)">Không có sản phẩm phù hợp.</p>
-          </div>
         </div>
 
-        <div class="mt-4 hidden overflow-hidden rounded-lg border sm:block" style="border-color: var(--admin-border); background: var(--admin-surface-0); box-shadow: var(--admin-elev-1)">
-          <div class="overflow-x-auto">
-            <table class="min-w-[840px] w-full text-left text-sm">
-              <thead class="border-b text-[10px] font-semibold uppercase tracking-widest" style="background: var(--admin-surface-2); color: var(--admin-text-muted); border-color: var(--admin-border)">
-                <tr>
-                  <th class="px-4 py-3">Sản phẩm</th>
-                  <th class="px-4 py-3">Genres</th>
-                  <th class="px-4 py-3">Duration</th>
-                  <th class="px-4 py-3">Status</th>
-                  <th class="px-4 py-3 text-right">Cập nhật</th>
-                  <th class="px-4 py-3 text-center">Xem</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="resource.status.value === 'loading' || resource.status.value === 'idle'" v-for="i in 8" :key="`sk-${i}`" class="border-b" style="border-color: var(--admin-border)">
-                  <td class="px-4 py-3" colspan="6">
+        <!-- ── Desktop table ── -->
+        <div class="pm-table-wrap">
+          <table class="pm-table">
+            <thead class="pm-table-head">
+              <tr>
+                <th class="pm-th">Sản phẩm</th>
+                <th class="pm-th">Thể loại</th>
+                <th class="pm-th">Thời lượng</th>
+                <th class="pm-th" style="white-space:nowrap;">
+                  Trạng thái
+                  <HintIcon
+                    placement="top"
+                    content="• Chờ duyệt (PENDING): Sản phẩm đang đợi admin kiểm tra. Bạn cần cấu hình giá trước.&#10;• Xuất bản (PUBLISHED): Sản phẩm đang hiển thị trên chợ để người mua tìm kiếm.&#10;• Đã ẩn (HIDDEN): Sản phẩm bị ẩn, không hiển thị công khai."
+                  />
+                </th>
+                <th class="pm-th pm-th--right">Cập nhật</th>
+                <th class="pm-th pm-th--center">Xem</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Skeleton rows -->
+              <template v-if="resource.status.value === 'loading' || resource.status.value === 'idle'">
+                <tr v-for="i in 6" :key="`sk-${i}`" class="pm-tr">
+                  <td class="pm-td" colspan="6">
                     <SkeletonCard />
                   </td>
                 </tr>
+              </template>
 
-                <tr v-else-if="items.length === 0" class="border-b" style="border-color: var(--admin-border)">
-                  <td class="px-4 py-10 text-center text-sm" colspan="6" style="color: var(--admin-text-muted)">
-                    Không có sản phẩm phù hợp.
-                  </td>
-                </tr>
+              <!-- Empty row -->
+              <tr v-else-if="items.length === 0" class="pm-tr">
+                <td class="pm-td pm-td--empty" colspan="6">
+                  <i class="pi pi-music" style="font-size:24px; opacity:.3;"></i>
+                  <div>Chưa có sản phẩm phù hợp</div>
+                </td>
+              </tr>
 
-                <tr v-else v-for="track in items" :key="track.id" class="border-b hover:bg-[color:var(--admin-surface-1)]" style="border-color: var(--admin-border)">
-                  <td class="px-4 py-3">
-                    <RouterLink class="block" :to="{ name: 'my-product-detail', params: { productId: track.id } }">
-                      <div class="font-semibold" style="color: var(--admin-text)">{{ track.title }}</div>
-                      <div class="text-xs" style="color: var(--admin-text-muted)">
+              <!-- Data rows -->
+              <template v-else>
+              <tr v-for="track in items" :key="track.id" class="pm-tr pm-tr--hover">
+                <td class="pm-td">
+                  <RouterLink class="pm-product-link" :to="{ name: 'my-product-detail', params: { productId: track.id } }">
+                    <div class="pm-product-thumb">
+                      <span>{{ track.title.slice(0, 2).toUpperCase() }}</span>
+                    </div>
+                    <div>
+                      <div class="pm-product-name">{{ track.title }}</div>
+                      <div class="pm-product-author">
                         <span v-if="track.authorName">{{ track.authorName }}</span>
-                        <span v-else class="font-mono opacity-60">#{{ (track.artistId || '—').slice(0, 8) }}</span>
+                        <span v-else class="pm-track-id">#{{ (track.artistId || '—').slice(0, 8) }}</span>
                       </div>
-                    </RouterLink>
-                  </td>
-                  <td class="px-4 py-3 text-xs" style="color: var(--admin-text-muted)">{{ resolveGenresDisplay(track.genres) }}</td>
-                  <td class="px-4 py-3 text-xs" style="color: var(--admin-text-muted)">{{ formatDuration(track.duration) }}</td>
-                  <td class="px-4 py-3">
-                    <span class="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold" style="border-color: var(--admin-border); background: var(--admin-surface-1); color: var(--admin-text)">
-                      <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                      {{ track.status }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3 text-right text-xs" style="color: var(--admin-text-muted)">{{ formatDateTime(track.updatedAt || track.createdAt) }}</td>
-                  <td class="px-4 py-3 text-center">
-                    <RouterLink
-                      class="inline-flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-[color:var(--admin-surface-1)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1"
-                      style="border-color: var(--admin-border); background: var(--admin-surface-0); color: var(--admin-primary-600)"
-                      :to="{ name: 'my-product-detail', params: { productId: track.id } }"
-                      title="Xem chi tiết"
-                      aria-label="Xem chi tiết"
-                    >
-                      <i class="pi pi-eye" />
-                    </RouterLink>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </RouterLink>
+                </td>
+                <td class="pm-td pm-td--muted">{{ resolveGenresDisplay(track.genres) }}</td>
+                <td class="pm-td pm-td--muted">{{ formatDuration(track.duration) }}</td>
+                <td class="pm-td">
+                  <span class="pm-status-badge" :class="`pm-status--${track.status.toLowerCase()}`">
+                    <span class="pm-status-dot"></span>
+                    {{ track.status === 'PENDING' ? 'Chờ duyệt' : track.status === 'PUBLISHED' ? 'Xuất bản' : 'Đã ẩn' }}
+                  </span>
+                </td>
+                <td class="pm-td pm-td--muted pm-td--right">{{ formatDateTime(track.updatedAt || track.createdAt) }}</td>
+                <td class="pm-td pm-td--center">
+                  <RouterLink
+                    class="pm-eye-btn"
+                    :to="{ name: 'my-product-detail', params: { productId: track.id } }"
+                    title="Xem chi tiết"
+                  >
+                    <i class="pi pi-arrow-right"></i>
+                  </RouterLink>
+                </td>
+              </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
 
-        <div v-if="meta" class="mt-4 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            class="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition hover:bg-[color:var(--admin-surface-1)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1 disabled:opacity-60"
-            style="border-color: var(--admin-border); background: var(--admin-surface-0); color: var(--admin-text)"
-            :disabled="!meta.hasPrevPage"
-            @click="prev"
-          >
-            Trước
+        <!-- Pagination -->
+        <div v-if="meta" class="pm-pagination">
+          <button type="button" class="pm-page-btn" :disabled="!meta.hasPrevPage" @click="prev">
+            <i class="pi pi-chevron-left"></i> Trước
           </button>
-          <div class="text-xs" style="color: var(--admin-text-muted)">Trang {{ meta.page }} / {{ meta.totalPages }}</div>
-          <button
-            type="button"
-            class="inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition hover:bg-[color:var(--admin-surface-1)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1 disabled:opacity-60"
-            style="border-color: var(--admin-border); background: var(--admin-surface-0); color: var(--admin-text)"
-            :disabled="!meta.hasNextPage"
-            @click="next"
-          >
-            Sau
+          <span class="pm-page-info">Trang {{ meta.page }} / {{ meta.totalPages }}</span>
+          <button type="button" class="pm-page-btn" :disabled="!meta.hasNextPage" @click="next">
+            Sau <i class="pi pi-chevron-right"></i>
           </button>
         </div>
-      </section>
-    </div>
 
+      </div><!-- /.pm-card -->
+
+    </div><!-- /.pm-root -->
+
+    <!-- ═══════════════ CREATE DIALOG ═══════════════ -->
     <Dialog v-model:visible="createOpen" modal class="w-[calc(100vw-0.75rem)] sm:w-[min(1040px,96vw)]">
       <template #header>
-        <div class="flex w-full items-center justify-between gap-4">
+        <div class="dlg-header">
+          <div class="dlg-header-icon"><i class="pi pi-music"></i></div>
           <div>
-            <div class="text-lg font-semibold text-[color:var(--admin-text)]">Thêm sản phẩm</div>
-          </div>
-          <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-500)]">
-            <i class="pi pi-wave-pulse" />
+            <div class="dlg-header-title">Thêm sản phẩm mới</div>
+            <div class="dlg-header-sub">Điền thông tin và upload file để hoàn tất</div>
           </div>
         </div>
       </template>
 
-      <Message v-if="createError" severity="error" class="mb-4">{{ createError }}</Message>
+      <!-- Error -->
+      <div v-if="createError" class="dlg-error">
+        <i class="pi pi-exclamation-circle"></i> {{ createError }}
+      </div>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <section class="space-y-4 rounded-[28px] border bg-[color:var(--admin-surface-1)] p-4 sm:p-5 [border-color:var(--admin-border)]">
-          <div class="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
-            <i class="pi pi-align-left text-[color:var(--admin-primary-500)]" />
-            Thông tin chung
+      <div class="dlg-body">
+        <!-- Left: Info -->
+        <section class="dlg-section">
+          <div class="dlg-section-title">
+            <i class="pi pi-align-left"></i> Thông tin chung
+            <HintIcon
+              placement="right"
+              content="Điền đầy đủ thông tin để tác phẩm dễ được tìm kiếm trên chợ. Tên sản phẩm và file audio là bắt buộc — các trường còn lại giúp tăng khả năng hiển thị."
+            />
           </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="space-y-2 md:col-span-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Tên sản phẩm</span>
-              <input
-                v-model="createForm.title"
-                class="h-10 w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 text-sm text-[color:var(--admin-text)] outline-none transition placeholder:text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)] focus:[border-color:var(--admin-primary-500)] focus:ring-2 focus:ring-[color:var(--admin-ring)]"
-                placeholder="Nhập tên sản phẩm"
-              />
+          <div class="dlg-fields">
+            <label class="dlg-field dlg-field--full">
+              <span class="dlg-label">Tên sản phẩm <span class="dlg-required">*</span></span>
+              <input v-model="createForm.title" class="dlg-input" placeholder="Nhập tên bản nhạc" />
             </label>
-            <label class="space-y-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Tác giả (tuỳ chọn)</span>
-              <input
-                v-model="createForm.authorName"
-                class="h-10 w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 text-sm text-[color:var(--admin-text)] outline-none transition placeholder:text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)] focus:[border-color:var(--admin-primary-500)] focus:ring-2 focus:ring-[color:var(--admin-ring)]"
-                placeholder="Nhập tên tác giả"
-              />
+            <label class="dlg-field">
+              <span class="dlg-label">Tác giả <span class="dlg-optional">(tuỳ chọn)</span></span>
+              <input v-model="createForm.authorName" class="dlg-input" placeholder="Tên tác giả" />
             </label>
-            <label class="space-y-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Duration (giây)</span>
-              <input
-                v-model="createForm.duration"
-                class="h-10 w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 text-sm text-[color:var(--admin-text)] outline-none transition placeholder:text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)] focus:[border-color:var(--admin-primary-500)] focus:ring-2 focus:ring-[color:var(--admin-ring)]"
-                placeholder="Ví dụ: 120"
-              />
+            <label class="dlg-field">
+              <span class="dlg-label">Thời lượng (giây)</span>
+              <input v-model="createForm.duration" class="dlg-input" placeholder="Tự động từ file audio" />
             </label>
 
-            <div class="space-y-2 md:col-span-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thể loại</span>
-              <div class="flex flex-wrap gap-2">
+            <div class="dlg-field dlg-field--full">
+              <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
+                Thể loại
+                <HintIcon
+                  placement="top"
+                  content="Chọn 1–3 thể loại phù hợp nhất. Thể loại giúp người mua lọc tìm kiếm đúng loại nhạc họ cần — chọn đúng giúp tác phẩm xuất hiện nhiều hơn."
+                />
+              </span>
+              <div class="dlg-chips">
                 <button
-                  v-for="option in PRODUCT_GENRE_OPTIONS"
-                  :key="`create-genre-${option.value}`"
+                  v-for="opt in PRODUCT_GENRE_OPTIONS"
+                  :key="`g-${opt.value}`"
                   type="button"
-                  class="rounded-full border px-3 py-1 text-xs font-semibold transition"
-                  :class="createForm.genres.includes(option.value)
-                    ? 'bg-[color:var(--admin-primary-50)] text-[color:var(--admin-text)] [border-color:var(--admin-primary-500)]'
-                    : 'bg-[color:var(--admin-surface-0)] text-[color:var(--admin-text)] [border-color:var(--admin-border)] hover:bg-[color:var(--admin-surface-2)]'"
-                  @click="createForm.genres = toggleSelection(createForm.genres, option.value)"
-                >
-                  {{ option.label }}
-                </button>
+                  class="dlg-chip"
+                  :class="{ active: createForm.genres.includes(opt.value) }"
+                  @click="createForm.genres = toggleSelection(createForm.genres, opt.value)"
+                >{{ opt.label }}</button>
               </div>
             </div>
 
-            <div class="space-y-2 md:col-span-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Use-case</span>
-              <div class="flex flex-wrap gap-2">
+            <div class="dlg-field dlg-field--full">
+              <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
+                Mục đích sử dụng
+                <HintIcon
+                  placement="top"
+                  content="Cho biết nhạc của bạn phù hợp với loại dự án nào (quảng cáo, phim, podcast…). Người mua thường lọc theo mục đích — tag đúng giúp tác phẩm tiếp cận đúng khách hàng."
+                />
+              </span>
+              <div class="dlg-chips">
                 <button
-                  v-for="option in PRODUCT_USE_CASE_OPTIONS"
-                  :key="`create-usecase-${option.value}`"
+                  v-for="opt in PRODUCT_USE_CASE_OPTIONS"
+                  :key="`u-${opt.value}`"
                   type="button"
-                  class="rounded-full border px-3 py-1 text-xs font-semibold transition"
-                  :class="createForm.useCases.includes(option.value)
-                    ? 'bg-[color:var(--admin-primary-50)] text-[color:var(--admin-text)] [border-color:var(--admin-primary-500)]'
-                    : 'bg-[color:var(--admin-surface-0)] text-[color:var(--admin-text)] [border-color:var(--admin-border)] hover:bg-[color:var(--admin-surface-2)]'"
-                  @click="createForm.useCases = toggleSelection(createForm.useCases, option.value)"
-                >
-                  {{ option.label }}
-                </button>
+                  class="dlg-chip"
+                  :class="{ active: createForm.useCases.includes(opt.value) }"
+                  @click="createForm.useCases = toggleSelection(createForm.useCases, opt.value)"
+                >{{ opt.label }}</button>
               </div>
             </div>
 
-            <label class="space-y-2 md:col-span-2">
-              <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Mô tả sản phẩm</span>
+            <label class="dlg-field dlg-field--full">
+              <span class="dlg-label">Mô tả</span>
               <textarea
                 v-model="createForm.description"
-                class="min-h-[120px] w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 py-3 text-sm text-[color:var(--admin-text)] outline-none transition placeholder:text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)] focus:[border-color:var(--admin-primary-500)] focus:ring-2 focus:ring-[color:var(--admin-ring)]"
-                placeholder="Nhập mô tả chi tiết cho sản phẩm"
-              />
+                class="dlg-textarea"
+                placeholder="Mô tả chi tiết về sản phẩm của bạn..."
+              ></textarea>
             </label>
           </div>
         </section>
 
-        <section class="space-y-4 rounded-[28px] border bg-[color:var(--admin-surface-1)] p-4 sm:p-5 [border-color:var(--admin-border)]">
-          <div class="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
-            <i class="pi pi-image text-[color:var(--admin-primary-500)]" />
-            Thumbnail
-          </div>
-
-          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-[color:var(--admin-text)]">Ảnh đại diện</div>
-              <span
-                v-if="createThumbnailFile"
-                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
-              >
-                {{ createThumbnailFile.name }}
-              </span>
-            </div>
-            <div class="mt-4">
-              <input
-                type="file"
-                accept="image/*,.png,.jpg,.jpeg,.webp"
-                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
-                @change="handleCreateThumbnailFileChange"
-              />
-            </div>
-            <div class="mt-4 overflow-hidden rounded-lg border border-dashed bg-[color:var(--admin-surface-1)] p-4 [border-color:var(--admin-border)]">
-              <img v-if="createThumbnailUrl" :src="createThumbnailUrl" alt="" class="h-40 w-full rounded-lg object-cover" />
-              <div v-else class="flex h-40 items-center justify-center text-sm text-[color:var(--admin-text-muted)]">Chưa chọn thumbnail</div>
-            </div>
-          </article>
-
-          <div class="flex items-center gap-3 pt-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
-            <i class="pi pi-volume-up text-[color:var(--admin-primary-500)]" />
-            Audio gốc
-          </div>
-
-          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-[color:var(--admin-text)]">File MP3 gốc</div>
-              <span
-                v-if="createOriginalFile"
-                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
-              >
-                {{ createOriginalFile.name }}
-              </span>
-            </div>
-            <div class="mt-4">
-              <input
-                type="file"
-                accept=".mp3,audio/*"
-                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
-                @change="handleCreateAudioFileChange"
-              />
-            </div>
-            <div class="mt-4">
-              <audio v-if="createOriginalAudioUrl" :src="createOriginalAudioUrl" controls class="w-full" />
-              <div v-else class="text-sm text-[color:var(--admin-text-muted)]">Chưa chọn audio</div>
-            </div>
-          </article>
-
-          <div class="flex items-center gap-3 pt-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--admin-text-muted)]">
-            <i class="pi pi-file-pdf text-[color:var(--admin-primary-500)]" />
-            Khuông nhạc (PDF)
-          </div>
-
-          <article class="rounded-[24px] border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-[color:var(--admin-text)]">File PDF</div>
-              <span
-                v-if="createSheetMusicFile"
-                class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]"
-              >
-                {{ createSheetMusicFile.name }}
-              </span>
-            </div>
-            <div class="mt-4">
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                class="block w-full text-sm text-[color:var(--admin-text-muted)] file:mr-4 file:rounded-lg file:border-0 file:bg-[color:var(--admin-primary-50)] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[color:var(--admin-primary-700)] hover:file:bg-[color:var(--admin-primary-100)]"
-                @change="handleCreateSheetMusicFileChange"
-              />
-            </div>
-          </article>
-
-          <label class="block space-y-2">
-            <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thời lượng (giây)</span>
-            <input
-              v-model="createForm.duration"
-              readonly
-              class="h-10 w-full rounded-lg border bg-[color:var(--admin-surface-0)] px-4 text-sm text-[color:var(--admin-text)] outline-none transition [border-color:var(--admin-border)]"
+        <!-- Right: Files -->
+        <section class="dlg-section">
+          <!-- Thumbnail -->
+          <div class="dlg-section-title">
+            <i class="pi pi-image"></i> Ảnh đại diện <span class="dlg-required">*</span>
+            <HintIcon
+              placement="right"
+              content="Ảnh thumbnail xuất hiện trên card sản phẩm ở trang chợ. Dùng ảnh rõ nét, tỷ lệ vuông (1:1), tối thiểu 500×500px. Hỗ trợ PNG, JPG, WEBP."
             />
-            <span class="text-xs text-[color:var(--admin-text-muted)]">
-              {{ createForm.duration ? `≈ ${formatDuration(Number(createForm.duration))}` : 'Chọn file audio để tự đọc thời lượng.' }}
-            </span>
-          </label>
+          </div>
+          <div class="dlg-upload-box">
+            <div class="dlg-thumb-preview">
+              <img v-if="createThumbnailUrl" :src="createThumbnailUrl" alt="" class="dlg-thumb-img" />
+              <div v-else class="dlg-thumb-placeholder">
+                <i class="pi pi-image"></i>
+                <span>PNG, JPG, WEBP</span>
+              </div>
+            </div>
+            <label class="dlg-file-label">
+              <i class="pi pi-upload"></i>
+              {{ createThumbnailFile ? createThumbnailFile.name : 'Chọn ảnh thumbnail' }}
+              <input type="file" accept="image/*,.png,.jpg,.jpeg,.webp" class="dlg-file-hidden" @change="handleCreateThumbnailFileChange" />
+            </label>
+          </div>
+
+          <!-- Audio -->
+          <div class="dlg-section-title" style="margin-top: 16px;">
+            <i class="pi pi-volume-up"></i> File audio gốc (MP3) <span class="dlg-required">*</span>
+            <HintIcon
+              placement="right"
+              content="Đây là file âm nhạc chất lượng cao mà người mua sẽ nhận được sau khi cấp phép. Chỉ hỗ trợ định dạng MP3. Thời lượng sẽ được đọc tự động từ file này."
+            />
+          </div>
+          <div class="dlg-upload-box">
+            <audio v-if="createOriginalAudioUrl" :src="createOriginalAudioUrl" controls class="dlg-audio-player"></audio>
+            <div v-else class="dlg-audio-placeholder">
+              <i class="pi pi-headphones"></i>
+              <span>Chưa chọn file audio</span>
+            </div>
+            <label class="dlg-file-label">
+              <i class="pi pi-upload"></i>
+              {{ createOriginalFile ? createOriginalFile.name : 'Chọn file MP3' }}
+              <input type="file" accept=".mp3,audio/*" class="dlg-file-hidden" @change="handleCreateAudioFileChange" />
+            </label>
+            <div v-if="createForm.duration" class="dlg-duration-hint">
+              <i class="pi pi-clock"></i>
+              Thời lượng: {{ formatDuration(Number(createForm.duration)) }}
+            </div>
+          </div>
+
+          <!-- Sheet music -->
+          <div class="dlg-section-title" style="margin-top: 16px;">
+            <i class="pi pi-file-pdf"></i> Khuông nhạc PDF <span class="dlg-optional">(tuỳ chọn)</span>
+            <HintIcon
+              placement="right"
+              content="Tải lên bản nhạc (sheet music) ở định dạng PDF nếu có. Đây là tài liệu bonus giúp tác phẩm hấp dẫn hơn với các nhạc sĩ và nhà sản xuất muốn chơi lại hoặc chỉnh sửa."
+            />
+          </div>
+          <div class="dlg-upload-box">
+            <label class="dlg-file-label">
+              <i class="pi pi-upload"></i>
+              {{ createSheetMusicFile ? createSheetMusicFile.name : 'Chọn file PDF' }}
+              <input type="file" accept=".pdf,application/pdf" class="dlg-file-hidden" @change="handleCreateSheetMusicFileChange" />
+            </label>
+          </div>
         </section>
       </div>
 
       <template #footer>
-        <div class="flex w-full flex-col gap-3 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1 sm:w-auto"
-            style="border-color: var(--admin-border); background: var(--admin-surface-0); color: var(--admin-text)"
-            :disabled="isCreating"
-            @click="createOpen = false"
-          >
+        <div class="dlg-footer">
+          <button type="button" class="dlg-btn-cancel" :disabled="isCreating" @click="createOpen = false">
             Huỷ
           </button>
-          <button
-            type="button"
-            class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-[color:var(--admin-ring)] focus-visible:ring-offset-1 sm:w-auto"
-            style="border-color: transparent; background: var(--admin-primary-button-bg); color: var(--admin-primary-button-text)"
-            :disabled="isCreating"
-            @click="submitCreate"
-          >
-            <i v-if="isCreating" class="pi pi-spin pi-spinner text-xs" />
-            Tạo sản phẩm
+          <button type="button" class="dlg-btn-submit" :disabled="isCreating" @click="submitCreate">
+            <i v-if="isCreating" class="pi pi-spin pi-spinner"></i>
+            <i v-else class="pi pi-check"></i>
+            {{ isCreating ? 'Đang tạo...' : 'Tạo sản phẩm' }}
           </button>
         </div>
       </template>
     </Dialog>
-  </div>
+
+  </MeAccountLayout>
 </template>
+
+<style scoped>
+/* ── Root ── */
+.pm-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 32px;
+}
+
+/* ── Page header ── */
+.pm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 20px 22px;
+  background: #fff;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.pm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.pm-header-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
+  background: var(--grad-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #fff;
+  box-shadow: var(--shadow-glow);
+  flex-shrink: 0;
+}
+.pm-title {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--c-text);
+  margin: 0;
+  line-height: 1.2;
+}
+.pm-sub {
+  font-size: 12px;
+  color: var(--c-text-mute);
+  font-weight: 500;
+  margin-top: 3px;
+}
+.pm-btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  background: var(--grad-brand);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+  transition: transform .2s var(--ease-out), box-shadow .2s var(--ease-out);
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pm-btn-add:hover { transform: translateY(-2px); box-shadow: 0 18px 50px rgba(20,184,166,.35); }
+.pm-btn-add .pi { font-size: 12px; }
+
+/* ── Main card ── */
+.pm-card {
+  background: #fff;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+/* ── Filters ── */
+.pm-filters {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px 0;
+  flex-wrap: wrap;
+}
+.pm-search-wrap {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg-soft);
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+}
+.pm-search-wrap:focus-within {
+  border-color: var(--c-blue-300);
+  box-shadow: 0 0 0 3px var(--c-blue-50);
+  background: #fff;
+}
+.pm-search-icon {
+  padding: 0 12px;
+  color: var(--c-text-mute);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.pm-search-input {
+  flex: 1;
+  height: 40px;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--c-text);
+  font-family: inherit;
+}
+.pm-search-input::placeholder { color: var(--c-text-mute); }
+
+.pm-select-wrap {
+  width: 220px;
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg-soft);
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+  position: relative;
+}
+.pm-select-wrap:focus-within {
+  border-color: var(--c-blue-300);
+  box-shadow: 0 0 0 3px var(--c-blue-50);
+}
+.pm-select-icon {
+  padding: 0 12px;
+  color: var(--c-text-mute);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.pm-select {
+  flex: 1;
+  height: 40px;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--c-text);
+  font-family: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+.pm-select-caret {
+  padding-right: 12px;
+  color: var(--c-text-mute);
+  font-size: 10px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.pm-count-row {
+  padding: 10px 20px 0;
+}
+.pm-count {
+  font-size: 12px;
+  color: var(--c-text-mute);
+}
+.pm-count strong { color: var(--c-text); font-weight: 700; }
+
+.pm-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px 0;
+  padding: 12px 16px;
+  background: #fff1f0;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Mobile cards ── */
+.pm-mobile-list {
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 12px;
+  border-top: 1px solid var(--c-border);
+}
+@media (max-width: 720px) {
+  .pm-mobile-list { display: flex; }
+  .pm-table-wrap { display: none; }
+}
+
+.pm-track-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #fff;
+  transition: background .15s;
+}
+.pm-track-card:hover { background: var(--c-bg-soft); }
+
+.pm-track-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--grad-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+.pm-track-initials { font-size: 14px; font-weight: 900; color: #fff; position: relative; z-index: 1; }
+.pm-track-thumb-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2), transparent 60%);
+}
+
+.pm-track-info { flex: 1; min-width: 0; }
+.pm-track-title { font-size: 13.5px; font-weight: 700; color: var(--c-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-track-author {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--c-text-mute);
+  margin-top: 2px;
+}
+.pm-track-meta { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--c-text-mute); margin-top: 3px; }
+.pm-meta-chip {
+  background: var(--c-blue-50);
+  color: var(--c-blue-600);
+  border: 1px solid var(--c-blue-100);
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.pm-meta-dot { opacity: .4; }
+.pm-track-id { font-family: monospace; opacity: .6; }
+
+.pm-track-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Skeleton */
+.pm-skeleton { background: #fff; pointer-events: none; }
+.pm-skeleton-thumb {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: var(--c-bg-mute);
+  animation: shimmer 1.4s infinite;
+  flex-shrink: 0;
+}
+.pm-skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.pm-skeleton-line {
+  height: 12px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--c-bg-mute) 25%, var(--c-border) 50%, var(--c-bg-mute) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+.pm-skeleton-line--lg { width: 60%; }
+.pm-skeleton-line--sm { width: 35%; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Empty */
+.pm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 56px 24px;
+  text-align: center;
+}
+.pm-empty-icon { font-size: 36px; color: var(--c-border-strong); }
+.pm-empty-title { font-size: 14px; font-weight: 700; color: var(--c-text-soft); }
+.pm-empty-sub { font-size: 12px; color: var(--c-text-mute); }
+
+/* Status badge */
+.pm-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pm-status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pm-status--pending  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.pm-status--pending .pm-status-dot  { background: #f59e0b; }
+.pm-status--published { background: var(--c-teal-50); color: var(--c-teal-600); border: 1px solid rgba(20,184,166,.25); }
+.pm-status--published .pm-status-dot { background: var(--c-teal-500); }
+.pm-status--hidden   { background: var(--c-bg-mute); color: var(--c-text-mute); border: 1px solid var(--c-border); }
+.pm-status--hidden .pm-status-dot   { background: var(--c-text-mute); }
+
+/* Detail btn (mobile) */
+.pm-btn-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  border: 1px solid var(--c-blue-100);
+  font-size: 11.5px;
+  font-weight: 700;
+  transition: background .15s, border-color .15s;
+  white-space: nowrap;
+}
+.pm-btn-detail:hover { background: var(--c-blue-100); border-color: var(--c-blue-300); }
+
+/* ── Desktop table ── */
+.pm-table-wrap {
+  margin-top: 14px;
+  border-top: 1px solid var(--c-border);
+  overflow-x: auto;
+}
+.pm-table { width: 100%; min-width: 720px; border-collapse: collapse; }
+.pm-table-head { background: var(--c-bg-soft); }
+.pm-th {
+  padding: 10px 16px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--c-text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border);
+  white-space: nowrap;
+}
+.pm-th--right { text-align: right; }
+.pm-th--center { text-align: center; }
+
+.pm-tr { border-bottom: 1px solid var(--c-border); }
+.pm-tr:last-child { border-bottom: none; }
+.pm-tr--hover { transition: background .15s; }
+.pm-tr--hover:hover { background: var(--c-bg-soft); }
+
+.pm-td {
+  padding: 12px 16px;
+  font-size: 13px;
+  vertical-align: middle;
+  color: var(--c-text);
+}
+.pm-td--muted { color: var(--c-text-mute); font-size: 12px; }
+.pm-td--right { text-align: right; }
+.pm-td--center { text-align: center; }
+.pm-td--empty {
+  text-align: center;
+  padding: 48px;
+  color: var(--c-text-mute);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.pm-product-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pm-product-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--grad-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  flex-shrink: 0;
+}
+.pm-product-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.pm-product-author { font-size: 11.5px; color: var(--c-text-mute); margin-top: 1px; }
+
+.pm-eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  background: var(--c-blue-50);
+  color: var(--c-blue-600);
+  border: 1px solid var(--c-blue-100);
+  transition: background .15s, border-color .15s, transform .15s;
+  font-size: 12px;
+}
+.pm-eye-btn:hover { background: var(--c-blue-100); border-color: var(--c-blue-300); transform: translateY(-1px); }
+
+/* ── Pagination ── */
+.pm-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--c-border);
+}
+.pm-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--c-border);
+  background: #fff;
+  color: var(--c-text-soft);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  font-family: inherit;
+}
+.pm-page-btn:hover:not(:disabled) { border-color: var(--c-blue-300); color: var(--c-blue-600); background: var(--c-blue-50); }
+.pm-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pm-page-info { font-size: 12px; color: var(--c-text-mute); }
+
+/* ══════════════ DIALOG ══════════════ */
+.dlg-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.dlg-header-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--grad-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  box-shadow: var(--shadow-glow);
+  flex-shrink: 0;
+}
+.dlg-header-title { font-size: 16px; font-weight: 900; color: var(--c-text); }
+.dlg-header-sub { font-size: 12px; color: var(--c-text-mute); margin-top: 2px; }
+
+.dlg-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #fff1f0;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dlg-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) { .dlg-body { grid-template-columns: 1fr; } }
+
+.dlg-section {
+  background: var(--c-bg-soft);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+}
+.dlg-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--c-teal-600);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 14px;
+}
+.dlg-section-title .pi { color: var(--c-teal-500); }
+
+.dlg-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dlg-field { display: flex; flex-direction: column; gap: 5px; }
+.dlg-field--full { grid-column: 1 / -1; }
+
+.dlg-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--c-text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dlg-required { color: #ef4444; margin-left: 2px; }
+.dlg-optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--c-text-mute); opacity: .7; }
+
+.dlg-input {
+  height: 40px;
+  border: 1.5px solid var(--c-border);
+  border-radius: var(--radius-xs);
+  padding: 0 12px;
+  font-size: 13.5px;
+  color: var(--c-text);
+  background: #fff;
+  outline: none;
+  font-family: inherit;
+  transition: border-color .2s, box-shadow .2s;
+}
+.dlg-input:focus { border-color: var(--c-blue-300); box-shadow: 0 0 0 3px var(--c-blue-50); }
+.dlg-input::placeholder { color: var(--c-text-mute); }
+
+.dlg-textarea {
+  min-height: 100px;
+  border: 1.5px solid var(--c-border);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  color: var(--c-text);
+  background: #fff;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color .2s, box-shadow .2s;
+}
+.dlg-textarea:focus { border-color: var(--c-blue-300); box-shadow: 0 0 0 3px var(--c-blue-50); }
+.dlg-textarea::placeholder { color: var(--c-text-mute); }
+
+.dlg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dlg-chip {
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--c-border);
+  background: #fff;
+  color: var(--c-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+}
+.dlg-chip:hover { border-color: var(--c-blue-300); color: var(--c-blue-600); }
+.dlg-chip.active {
+  background: var(--grad-brand);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(20,184,166,.25);
+}
+
+.dlg-upload-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dlg-thumb-preview {
+  width: 100%;
+  aspect-ratio: 16/7;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1.5px dashed var(--c-border);
+  background: #fff;
+}
+.dlg-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.dlg-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--c-text-mute);
+  font-size: 12px;
+}
+.dlg-thumb-placeholder .pi { font-size: 24px; opacity: .4; }
+
+.dlg-audio-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-mute);
+  font-size: 13px;
+  background: #fff;
+}
+.dlg-audio-placeholder .pi { font-size: 18px; opacity: .4; }
+.dlg-audio-player { width: 100%; border-radius: var(--radius-xs); }
+
+.dlg-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--c-blue-100);
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlg-file-label:hover { background: var(--c-blue-100); border-color: var(--c-blue-300); }
+.dlg-file-hidden { display: none; }
+
+.dlg-duration-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--c-teal-600);
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+/* Dialog footer */
+.dlg-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+.dlg-btn-cancel {
+  padding: 9px 20px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--c-border);
+  background: #fff;
+  color: var(--c-text-soft);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  font-family: inherit;
+}
+.dlg-btn-cancel:hover:not(:disabled) { border-color: var(--c-border-strong); color: var(--c-text); }
+.dlg-btn-cancel:disabled { opacity: .5; cursor: not-allowed; }
+.dlg-btn-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 24px;
+  border-radius: var(--radius-full);
+  background: var(--grad-brand);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+  transition: transform .2s var(--ease-out), box-shadow .2s;
+  font-family: inherit;
+}
+.dlg-btn-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(20,184,166,.35); }
+.dlg-btn-submit:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+</style>

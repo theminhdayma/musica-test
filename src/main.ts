@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ConfirmationService from 'primevue/confirmationservice'
 import Aura from '@primevue/themes/aura'
+import FloatingVue from 'floating-vue'
 import App from './App.vue'
 import { routes } from './router'
 import { ApiError } from './shared/api/errors'
@@ -12,6 +13,7 @@ import { installRouterGuards } from './app/routerGuards'
 import './styles/main.css'
 import './styles/admin-vars.css'
 import 'primeicons/primeicons.css'
+import 'floating-vue/dist/style.css'
 
 export const createApp = ViteSSG(
   App,
@@ -28,10 +30,25 @@ export const createApp = ViteSSG(
       }
     })
     app.use(ConfirmationService)
+    app.use(FloatingVue, {
+      themes: {
+        'artist-hint': {
+          $extend: 'tooltip',
+          delay: { show: 0, hide: 100 },
+          placement: 'right',
+          distance: 12,
+        },
+      },
+    })
 
     const auth = useAuthStore(pinia)
     setAccessTokenGetter(() => auth.accessToken)
     if (!import.meta.env.SSR) {
+      try {
+        document.documentElement.classList.remove('app-dark')
+        localStorage.removeItem('app-dark')
+      } catch {
+      }
       auth.hydrate()
       if (auth.accessToken) {
         auth.hydrateMe().catch((error) => {

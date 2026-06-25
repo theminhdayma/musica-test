@@ -126,3 +126,51 @@
 
   --admin-sidebar-active-bg: #0ea5e9;
 }
+
+.text-section-heading {
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.07em;
+  font-weight: 500;
+}
+
+.text-code-mono {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.text-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.text-body-sm {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.text-body-md {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.text-metadata {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.font-section-heading {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.font-code-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.font-caption,
+.font-body-sm,
+.font-body-md,
+.font-metadata,
+.font-page-title {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}

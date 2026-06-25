@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
+import HintIcon from '../../shared/ui/HintIcon.vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ComplianceDetail } from '../../modules/compliance/types'
 import { getMyComplianceDetail } from '../../modules/compliance/api'
@@ -52,6 +53,10 @@ import ArtistProductUpsertDialog from '../../components/features/products/Artist
 import ProductWavePreview from '../../components/features/products/ProductWavePreview.vue'
 import ProductPricingTableSection from '../../components/features/products/detail/ProductPricingTableSection.vue'
 import PricingFormulaOverviewDialog from '../../components/features/pricing/PricingFormulaOverviewDialog.vue'
+import JoinPlatformModal from '../../components/features/products/detail/JoinPlatformModal.vue'
+import ProductAllowedPermissionsDialog from '../../components/features/products/detail/ProductAllowedPermissionsDialog.vue'
+import ProductWorkspaceSidebar from '../../components/features/products/detail/ProductWorkspaceSidebar.vue'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 
 type ProductDetailSectionKey = 'general' | 'rights-license' | 'pricing'
 type PricingTableDraftValue = {
@@ -164,6 +169,7 @@ const fetchProductDetail = async () => {
     selectedTrack.value = data
     if (data.thumbnailKey) void fetchThumbnailUrl(data.id)
     if (data.originalAudioKey) void fetchOriginalAudioUrl(data.id)
+    void ensureComplianceDetailLoaded(data.id)
   } catch (error) {
     setError(error)
   } finally {
@@ -172,13 +178,20 @@ const fetchProductDetail = async () => {
 }
 
 const navigateToSection = (section: ProductDetailSectionKey) => {
-  router.push({
+  void router.push({
     name: 'my-product-detail',
     params: {
       productId: props.productId,
       section,
     },
     query: route.query,
+  })
+}
+
+const goBackToList = () => {
+  void router.push({
+    name: 'my-products',
+    query: backToListQuery.value,
   })
 }
 
@@ -189,7 +202,8 @@ const parseDuration = (value: string | null | undefined) => {
   return parsed
 }
 
-const formatDuration = (seconds: number) => {
+const formatDuration = (seconds: number | null | undefined) => {
+  if (typeof seconds !== 'number' || Number.isNaN(seconds)) return 'Chưa có'
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -205,6 +219,83 @@ const getProductStatusClass = (status: MyProductDetail['status']) => {
   if (status === 'PUBLISHED') return 'border-[color:var(--admin-success-200)] bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]'
   if (status === 'HIDDEN') return 'border-[color:var(--admin-neutral-200)] bg-[color:var(--admin-neutral-100)] text-[color:var(--admin-neutral-700)]'
   return 'border-[color:var(--admin-warning-300)] bg-[color:var(--admin-warning-50)] text-[color:var(--admin-warning-800)]'
+}
+
+const getTrackArtistLabel = (track: MyProductDetail) => track.authorName?.trim() || 'Chưa có'
+
+const formatTrackGenresDisplay = (track: MyProductDetail) => {
+  const genres = (track.genres ?? []) as ProductGenre[]
+  const label = genres.map(resolveProductGenreLabel).filter((item) => item.length > 0).join(', ')
+  return label.length > 0 ? label : 'Chưa có'
+}
+
+const formatTrackUseCasesDisplay = (track: MyProductDetail) => {
+  const useCases = (track.useCases ?? []) as ProductUseCase[]
+  const label = useCases.map(resolveProductUseCaseLabel).filter((item) => item.length > 0).join(', ')
+  return label.length > 0 ? label : 'Chưa có'
+}
+
+const getOriginalAudioFileLabel = (track: MyProductDetail) => {
+  const key = track.originalAudioKey ?? ''
+  if (key.length === 0) return 'Chưa có audio'
+  const parts = key.split('/')
+  return parts[parts.length - 1] || key
+}
+
+type PermissionDisplay = {
+  id: string
+  name: string
+  lawReference: string
+}
+
+const selectedAllowedPermissions = computed<PermissionDisplay[]>(() => {
+  const ids = selectedTrack.value?.allowedPermissionIds ?? []
+  if (ids.length === 0) return []
+  if (approvedPermissionOptions.value.length === 0) return []
+  const map = new Map(approvedPermissionOptions.value.map((item) => [item.id, item]))
+  return ids.flatMap((id) => {
+    const permission = map.get(id)
+    if (!permission) return []
+    return [{
+      id: permission.id,
+      name: permission.name,
+      lawReference: permission.lawReference,
+    }]
+  })
+})
+
+const getVisibleAllowedPermissions = (_track: MyProductDetail) => selectedAllowedPermissions.value.slice(0, 3)
+
+const formatComplianceLegalStatusLabel = (value: ComplianceDetail['legalStatus'] | null | undefined) => {
+  if (value === 'SUFFICIENT') return 'Đã duyệt'
+  if (value === 'INSUFFICIENT') return 'Thiếu hồ sơ'
+  return 'Chờ pháp lý'
+}
+
+const formatComplianceReviewStatusLabel = (value: ComplianceDetail['reviewStatus'] | null | undefined) => {
+  if (value === 'APPROVED') return 'Đã duyệt'
+  if (value === 'REJECTED') return 'Từ chối'
+  return 'Chờ kiểm duyệt'
+}
+
+const getProductComplianceLegalStatusClass = (value: ComplianceDetail['legalStatus']) => {
+  if (value === 'SUFFICIENT') {
+    return 'border-[color:rgb(var(--admin-success-rgb)/0.24)] bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]'
+  }
+  if (value === 'INSUFFICIENT') {
+    return 'border-[color:rgb(var(--admin-warning-rgb)/0.22)] bg-[color:var(--admin-warning-50)] text-[color:var(--admin-warning-700)]'
+  }
+  return 'border-[color:rgb(var(--admin-primary-rgb)/0.22)] bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-800)]'
+}
+
+const getProductComplianceReviewStatusClass = (value: ComplianceDetail['reviewStatus']) => {
+  if (value === 'APPROVED') {
+    return 'border-[color:rgb(var(--admin-success-rgb)/0.24)] bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]'
+  }
+  if (value === 'REJECTED') {
+    return 'border-[color:rgb(var(--admin-danger-rgb)/0.22)] bg-[color:var(--admin-danger-50)] text-[color:var(--admin-danger-700)]'
+  }
+  return 'border-[color:rgb(var(--admin-primary-rgb)/0.22)] bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-800)]'
 }
 
 const extractEventFile = (event: Event): File | null => {
@@ -305,6 +396,93 @@ const uploadTrackSheetMusicFile = async (productId: string, file: File) => {
   await uploadToSignedUrl(signed.data.uploadUrl, file)
   const confirmed = await confirmMyProductSheetMusicUpload(productId, { fileKey: signed.data.fileKey })
   return confirmed.data as MyProductDetail
+}
+
+const uploadDialogVisible = ref(false)
+const uploadStatus = ref<'idle' | 'requesting' | 'uploading' | 'done' | 'error'>('idle')
+const uploadFile = ref<File | null>(null)
+const uploadError = ref<string | null>(null)
+const uploadResult = ref<{ uploadUrl: string; fileKey: string } | null>(null)
+
+const formatUploadStatusLabel = (status: typeof uploadStatus.value) => {
+  if (status === 'requesting') return 'Đang chuẩn bị'
+  if (status === 'uploading') return 'Đang tải lên'
+  if (status === 'done') return 'Hoàn tất'
+  if (status === 'error') return 'Lỗi'
+  return 'Chưa tải'
+}
+
+const openUploadDialog = () => {
+  if (!selectedTrack.value) return
+  clearMessages()
+  uploadFile.value = null
+  uploadStatus.value = 'idle'
+  uploadResult.value = null
+  uploadError.value = null
+  uploadDialogVisible.value = true
+}
+
+const onUploadFileChange = (event: Event) => {
+  const file = extractEventFile(event)
+  uploadFile.value = file
+  uploadStatus.value = 'idle'
+  uploadResult.value = null
+  uploadError.value = null
+
+  if (file) {
+    try {
+      ensureAudioFile(file, 'Audio gốc')
+    } catch (error) {
+      uploadFile.value = null
+      uploadError.value = error instanceof Error ? error.message : 'Lỗi tải file'
+    }
+  }
+}
+
+const submitUpload = async () => {
+  if (!selectedTrack.value || !uploadFile.value) return
+
+  clearMessages()
+  uploadStatus.value = 'requesting'
+  uploadError.value = null
+
+  try {
+    uploadStatus.value = 'uploading'
+    const updated = await uploadTrackAudioFile(selectedTrack.value.id, uploadFile.value)
+    selectedTrack.value = updated
+    uploadStatus.value = 'done'
+    uploadResult.value = { uploadUrl: '', fileKey: updated.originalAudioKey ?? '' }
+    await fetchProductDetail()
+  } catch (error) {
+    uploadStatus.value = 'error'
+    uploadError.value = error instanceof Error ? error.message : 'Lỗi tải file'
+  }
+}
+
+const applyDemoAudioKey = async () => {
+  if (!selectedTrack.value) return
+
+  clearMessages()
+  uploadStatus.value = 'uploading'
+  uploadError.value = null
+  uploadResult.value = null
+
+  try {
+    const confirmed = await confirmMyProductAudioUpload(selectedTrack.value.id, {
+      mode: 'original',
+      fileKey: '1.mp3',
+    })
+    selectedTrack.value = confirmed.data as MyProductDetail
+    const nextOriginalUrls = { ...originalAudioUrls.value }
+    delete nextOriginalUrls[selectedTrack.value.id]
+    originalAudioUrls.value = nextOriginalUrls
+    uploadResult.value = { uploadUrl: '', fileKey: '1.mp3' }
+    uploadStatus.value = 'done'
+    await fetchProductDetail()
+  } catch (error) {
+    uploadStatus.value = 'error'
+    uploadError.value = error instanceof Error ? error.message : 'Lỗi cập nhật audio'
+  }
 }
 
 const editDialogVisible = ref(false)
@@ -465,6 +643,28 @@ const approvedPermissionsLoading = ref(false)
 const approvedPermissionsSaving = ref(false)
 const selectedAllowedPermissionIds = ref<string[]>([])
 
+const ensureComplianceDetailLoaded = async (productId: string) => {
+  if (approvedPermissionsLoading.value) return
+  if (approvedPermissionsDetail.value?.product.trackId === productId) return
+  approvedPermissionsLoading.value = true
+  try {
+    const { data } = await getMyComplianceDetail(productId)
+    approvedPermissionsDetail.value = data
+  } catch (error) {
+    setError(error)
+  } finally {
+    approvedPermissionsLoading.value = false
+  }
+}
+
+const complianceLegalStatusSafe = computed<ComplianceDetail['legalStatus']>(
+  () => approvedPermissionsDetail.value?.legalStatus ?? 'PENDING',
+)
+
+const complianceReviewStatusSafe = computed<ComplianceDetail['reviewStatus']>(
+  () => approvedPermissionsDetail.value?.reviewStatus ?? 'PENDING',
+)
+
 const canChooseAllowedPermissions = computed(
   () =>
     approvedPermissionsDetail.value?.legalStatus === 'SUFFICIENT' &&
@@ -496,31 +696,33 @@ const selectedApprovedPermissionCount = computed(
   () => approvedPermissionOptions.value.filter((permission) => selectedAllowedPermissionIds.value.includes(permission.id)).length,
 )
 
-const canSaveAllowedPermissions = computed(() => canChooseAllowedPermissions.value && !approvedPermissionsSaving.value)
+const canSaveAllowedPermissions = computed(
+  () =>
+    !approvedPermissionsLoading.value &&
+    !approvedPermissionsSaving.value &&
+    canChooseAllowedPermissions.value &&
+    approvedPermissionOptions.value.length > 0,
+)
+
+const approvedPermissionsDetailLabel = computed(() => {
+  const detail = approvedPermissionsDetail.value
+  if (!detail) return 'Chưa tải hồ sơ pháp lý.'
+  return `Pháp lý: ${detail.legalStatus} — Kiểm duyệt: ${detail.reviewStatus}`
+})
 
 const openApprovedPermissionsDialog = () => {
   if (!selectedTrack.value) return
 
   approvedPermissionsTrack.value = selectedTrack.value
   approvedPermissionsDialogVisible.value = true
-  approvedPermissionsDetail.value = null
   selectedAllowedPermissionIds.value = [...(selectedTrack.value.allowedPermissionIds ?? [])]
-  approvedPermissionsLoading.value = true
-
-  void getMyComplianceDetail(selectedTrack.value.id)
-    .then(({ data }) => {
-      approvedPermissionsDetail.value = data
-      const approvedPermissionIdSet = new Set(data.approvedPermissionIds.filter((item) => item.length > 0))
-      selectedAllowedPermissionIds.value = selectedTrack.value
-        ? (selectedTrack.value.allowedPermissionIds ?? []).filter((item) => approvedPermissionIdSet.has(item))
-        : []
-    })
-    .catch((error) => {
-      setError(error)
-    })
-    .finally(() => {
-      approvedPermissionsLoading.value = false
-    })
+  const productId = selectedTrack.value.id
+  void ensureComplianceDetailLoaded(productId).then(() => {
+    const data = approvedPermissionsDetail.value
+    if (!data) return
+    const approvedPermissionIdSet = new Set(data.approvedPermissionIds.filter((item) => item.length > 0))
+    selectedAllowedPermissionIds.value = (selectedTrack.value?.allowedPermissionIds ?? []).filter((item) => approvedPermissionIdSet.has(item))
+  })
 }
 
 const toggleAllowedPermissionSelection = (permissionId: string) => {
@@ -569,7 +771,6 @@ type AvailablePricingPlatform = PricingPlatformListItem & {
 
 const pricingCatalog = ref<PricingPlatformListItem[]>([])
 const pricingPlatforms = ref<ProductPlatform[]>([])
-const pricingSummary = ref<ProductPricingSummary | null>(null)
 const pricingLoading = ref(false)
 const pricingCatalogLoading = ref(false)
 const pricingActionLoading = ref(false)
@@ -584,6 +785,19 @@ const pricingBasePriceByPlatformId = ref<Record<string, number>>({})
 const pricingWarningsByPlatformId = ref<Record<string, string[]>>({})
 const pricingFormulaOverviewByPlatformId = ref<Record<string, PricingFormulaOverview | null>>({})
 const pricingFormulaDialogVisible = ref(false)
+const joinPlatformModalVisible = ref(false)
+
+const pricingSummary = computed<ProductPricingSummary>(() => {
+  const trackId = selectedTrack.value?.id ?? ''
+  const platformCount = pricingPlatforms.value.length
+  const variantCount = pricingPlatforms.value.reduce((sum, platform) => sum + (platform.variantsCount ?? 0), 0)
+  return {
+    productId: trackId,
+    platformCount,
+    variantCount,
+    configured: platformCount > 0 && variantCount > 0,
+  }
+})
 
 const fetchPricingCatalog = async () => {
   if (pricingCatalogLoading.value) return
@@ -602,12 +816,21 @@ const fetchPricingPlatforms = async () => {
   try {
     const response = await listMyProductPlatforms(selectedTrack.value.id)
     pricingPlatforms.value = (response.data.items ?? []).filter((item) => !item.deletedAt)
-    if (!selectedPricingPlatformId.value) {
+    const currentSelected = selectedPricingPlatformId.value
+    if (!currentSelected || !pricingPlatforms.value.some((item) => item.id === currentSelected)) {
       selectedPricingPlatformId.value = pricingPlatforms.value[0]?.id ?? null
     }
   } finally {
     pricingLoading.value = false
   }
+}
+
+const fetchProductPricingPlatforms = async () => {
+  await fetchPricingPlatforms()
+}
+
+const selectPricingPlatformById = (platformId: string) => {
+  selectedPricingPlatformId.value = platformId
 }
 
 const ensurePricingSchemaLoaded = async (platformType: PricingPlatformType) => {
@@ -690,6 +913,21 @@ const selectedPricingFormulaOverview = computed(() => {
   return pricingFormulaOverviewByPlatformId.value[platform.id] ?? null
 })
 
+const selectedPricingWarnings = computed(() => {
+  const platform = selectedPricingPlatform.value
+  if (!platform) return []
+  return pricingWarningsByPlatformId.value[platform.id] ?? platform.warnings ?? []
+})
+
+const selectedPricingVariantBadge = computed(() => {
+  const rows = selectedPricingTableRows.value
+  if (rows.length === 0) return '0 biến thể'
+  const configured = rows.filter((row) => row.isConfigured).length
+  return `${configured}/${rows.length} biến thể`
+})
+
+const isSelectedPricingPlatformArchived = computed(() => Boolean(selectedPricingPlatform.value?.deletedAt))
+
 const resetSelectedPricingTableDrafts = () => {
   const platform = selectedPricingPlatform.value
   if (!platform) return
@@ -765,7 +1003,13 @@ const saveSelectedPricingTable = async () => {
 
 const availablePricingPlatforms = computed<AvailablePricingPlatform[]>(() => {
   const permissionSet = new Set(selectedTrack.value?.allowedPermissionIds ?? [])
-  return pricingCatalog.value.map((platform) => {
+  const joinedPlatformTypes = new Set(
+    pricingPlatforms.value
+      .filter((platform) => !platform.deletedAt)
+      .map((platform) => String(platform.platformType || '').toLowerCase()),
+  )
+  return pricingCatalog.value.flatMap((platform) => {
+    if (joinedPlatformTypes.has(String(platform.type).toLowerCase())) return []
     const missing = (platform.requiredPermissions ?? []).filter((permission) => !permissionSet.has(permission.id))
     return {
       ...platform,
@@ -781,12 +1025,27 @@ const joinPricingPlatform = async (platformType: PricingPlatformType) => {
   try {
     await createMyProductPlatform(selectedTrack.value.id, { platformType })
     await fetchPricingPlatforms()
+    joinPlatformModalVisible.value = false
+    const joined = pricingPlatforms.value.find((item) => String(item.platformType).toLowerCase() === String(platformType).toLowerCase())
+    if (joined) selectedPricingPlatformId.value = joined.id
     notifySuccess('Đã thêm nền tảng')
   } catch (error) {
     setError(error)
   } finally {
     pricingActionLoading.value = false
   }
+}
+
+const confirmDeletePricingPlatform = (platform: ProductPlatform) => {
+  if (!selectedTrack.value) return
+  confirm.require({
+    header: 'Xác nhận gỡ nền tảng',
+    message: `Gỡ nền tảng "${platform.platformName}" khỏi sản phẩm?`,
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Gỡ',
+    rejectLabel: 'Huỷ',
+    accept: () => void removePricingPlatform(platform.platformType as PricingPlatformType),
+  })
 }
 
 const removePricingPlatform = async (platformType: PricingPlatformType) => {
@@ -846,308 +1105,500 @@ onBeforeUnmount(() => {
   revokeObjectUrl(editThumbnailUrl.value)
   revokeObjectUrl(editOriginalAudioUrl.value)
 })
-
-const isGeneralSection = computed(() => activeSection.value === 'general')
-const isRightsSection = computed(() => activeSection.value === 'rights-license')
-const isPricingSection = computed(() => activeSection.value === 'pricing')
 </script>
 
 <template>
-  <div class="artist-scope min-h-screen bg-[color:var(--admin-shell-bg-start)]">
-    <div v-if="successMessage" class="px-4 pt-4">
-      <Message severity="success" class="mx-auto w-full max-w-[1200px]">
-        {{ successMessage }}
-      </Message>
-    </div>
-    <div v-if="errorMessage" class="px-4 pt-4">
-      <Message severity="error" class="mx-auto w-full max-w-[1200px]">
-        {{ errorMessage }}
-      </Message>
-    </div>
+  <div class="artist-scope min-h-screen w-full bg-[color:var(--admin-surface-1)] flex flex-col">
+    <SidebarProvider v-if="selectedTrack" class="flex-1 w-full flex">
+      <ProductWorkspaceSidebar
+        :active-section="activeSection"
+        :pricing-platforms="pricingPlatforms"
+        :selected-pricing-platform-id="selectedPricingPlatformId"
+        @back="goBackToList"
+        @navigate="navigateToSection"
+        @select-pricing-platform="selectPricingPlatformById"
+        @open-join-platform="joinPlatformModalVisible = true"
+      />
 
-    <div v-if="selectedTrack" class="mx-auto flex w-full max-w-[1400px] gap-0 px-4 py-6">
-      <aside class="sticky top-0 hidden h-[calc(100vh-3rem)] w-[300px] shrink-0 flex-col border-r bg-[color:var(--admin-surface-0)] lg:flex" style="border-color: var(--admin-border)">
-        <div class="border-b p-4" style="border-color: var(--admin-border)">
-          <button
-            type="button"
-            class="inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition hover:bg-[color:var(--admin-surface-2)]"
-            style="border-color: var(--admin-border); background: var(--admin-surface-1); color: var(--admin-text)"
-            @click="router.push({ name: 'my-products', query: backToListQuery })"
-          >
-            <i class="pi pi-arrow-left text-xs" />
-            Quay lại danh sách
-          </button>
-        </div>
-
-        <div class="flex-1 px-3 py-4">
-          <div class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--admin-text-muted)">
-            Điều hướng
-          </div>
-          <div class="space-y-1">
-            <button
-              type="button"
-              class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors"
-              :class="activeSection === 'general' ? 'bg-[color:var(--admin-sidebar-active-bg)] text-white' : 'text-[color:var(--admin-text-muted)] hover:bg-[color:var(--admin-sidebar-hover-bg)] hover:text-[color:var(--admin-text)]'"
-              @click="navigateToSection('general')"
-            >
-              <span class="flex h-5 w-5 shrink-0 items-center justify-center text-base"><i class="pi pi-file-edit" /></span>
-              <span class="truncate">Thông tin chung</span>
-            </button>
-            <button
-              type="button"
-              class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors"
-              :class="activeSection === 'rights-license' ? 'bg-[color:var(--admin-sidebar-active-bg)] text-white' : 'text-[color:var(--admin-text-muted)] hover:bg-[color:var(--admin-sidebar-hover-bg)] hover:text-[color:var(--admin-text)]'"
-              @click="navigateToSection('rights-license')"
-            >
-              <span class="flex h-5 w-5 shrink-0 items-center justify-center text-base"><i class="pi pi-book" /></span>
-              <span class="truncate">Quyền và giấy phép</span>
-            </button>
-            <button
-              type="button"
-              class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors"
-              :class="activeSection === 'pricing' ? 'bg-[color:var(--admin-sidebar-active-bg)] text-white' : 'text-[color:var(--admin-text-muted)] hover:bg-[color:var(--admin-sidebar-hover-bg)] hover:text-[color:var(--admin-text)]'"
-              @click="navigateToSection('pricing')"
-            >
-              <span class="flex h-5 w-5 shrink-0 items-center justify-center text-base"><i class="pi pi-calculator" /></span>
-              <span class="truncate">Bảng giá</span>
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main class="min-w-0 flex-1 lg:px-8">
-        <header class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-5 shadow-sm [border-color:var(--admin-border)]">
-          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h1 class="min-w-0 truncate text-2xl font-bold text-[color:var(--admin-text)]">
-                  {{ selectedTrack.title }}
-                </h1>
-                <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold" :class="getProductStatusClass(selectedTrack.status)">
-                  {{ formatProductStatusLabel(selectedTrack.status) }}
-                </span>
-              </div>
-              <div class="mt-1 text-sm text-[color:var(--admin-text-muted)]">
-                ID: <span class="font-mono">{{ selectedTrack.id }}</span>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" :class="secondaryButtonClass" :disabled="isLoading" @click="openEditDialog">
-                <i class="pi pi-pencil mr-2" />
-                Chỉnh sửa
-              </button>
-              <button type="button" :class="secondaryButtonClass" :disabled="isLoading || !selectedTrack.sheetMusicPdfKey" @click="openSheetMusicPdf(selectedTrack)">
-                <i class="pi pi-file-pdf mr-2" />
-                Mở PDF
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <section v-if="isGeneralSection" class="mt-6 space-y-6">
-          <article class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-6 shadow-sm [border-color:var(--admin-border)]">
-            <div class="flex flex-col gap-6">
-              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">
-                Nghe thử audio gốc
-              </div>
-              <ProductWavePreview
-                hero
-                :disabled="!selectedTrack.originalAudioKey"
-                :audio-url="selectedTrack.originalAudioKey ? (originalAudioUrls[selectedTrack.id] ?? null) : null"
-                :track-status="selectedTrack.status"
-              />
-            </div>
-          </article>
-
-          <article class="grid gap-4 lg:grid-cols-2">
-            <div class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-5 shadow-sm [border-color:var(--admin-border)]">
-              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Mô tả</div>
-              <div class="mt-3 text-sm leading-7 text-[color:var(--admin-text)]">
-                {{ selectedTrack.description || 'Chưa có mô tả' }}
-              </div>
-            </div>
-            <div class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-5 shadow-sm [border-color:var(--admin-border)]">
-              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thuộc tính</div>
-              <dl class="mt-4 grid gap-3 text-sm">
-                <div class="flex items-start justify-between gap-4">
-                  <dt class="text-[color:var(--admin-text-muted)]">Tác giả</dt>
-                  <dd class="text-right font-semibold text-[color:var(--admin-text)]">{{ selectedTrack.authorName || '—' }}</dd>
+      <SidebarInset class="flex-1 min-w-0 flex flex-col w-full">
+        <main class="flex-1 overflow-y-auto w-full">
+          <section v-if="activeSection === 'general'">
+            <section class="min-h-[70vh] flex flex-col items-center justify-center py-12 px-6 bg-[color:var(--admin-surface-1)]/50 relative overflow-hidden">
+              <div class="w-full max-w-5xl space-y-12 text-center mt-8">
+                <div class="space-y-4">
+                  <div class="inline-flex items-center gap-3">
+                    <span
+                      class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold"
+                      :class="selectedTrack.status === 'PUBLISHED'
+                        ? 'bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-700)] border [border-color:var(--admin-primary-200)] shadow-sm'
+                        : selectedTrack.status === 'PENDING'
+                          ? 'bg-[color:var(--admin-warning-50)] text-[color:var(--admin-warning-700)] border [border-color:var(--admin-warning-200)] shadow-sm'
+                          : 'bg-[color:var(--admin-surface-2)] text-[color:var(--admin-text-muted)] border [border-color:var(--admin-border)]'"
+                    >
+                      <span
+                        class="w-2 h-2 rounded-full mr-2"
+                        :class="selectedTrack.status === 'PUBLISHED'
+                          ? 'bg-[color:var(--admin-primary-600)]'
+                          : selectedTrack.status === 'PENDING'
+                            ? 'bg-[color:var(--admin-warning-500)]'
+                            : 'bg-[color:var(--admin-text-muted)]'"
+                      />
+                      {{ formatProductStatusLabel(selectedTrack.status) }}
+                    </span>
+                    <span class="text-metadata text-[color:var(--admin-text-muted)] font-code-mono uppercase tracking-tighter">MÃ SP: {{ selectedTrack.id.slice(0, 8) }}</span>
+                    <HintIcon content="Trạng thái hiện tại của sản phẩm: Chưa công khai nghĩa là bài nhạc chưa ai thấy. Đang chờ duyệt nghĩa là đội ngũ Musica đang xem xét. Đang bán nghĩa là bài đã lên chợ và người mua có thể tìm thấy. Để được lên chợ, bài nhạc cần có giấy tờ pháp lý hợp lệ, ít nhất một quyền bán được chọn và ít nhất một mức giá được thiết lập." placement="bottom" />
+                  </div>
+                  <h2 class="text-[color:var(--admin-text)] font-black drop-shadow-sm" style="font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif; font-size: clamp(3rem, 6vw, 4.5rem); line-height: 0.94; letter-spacing: -0.04em;">
+                    {{ selectedTrack.title }}
+                  </h2>
+                  <div class="flex items-center justify-center gap-2 text-[color:var(--admin-text-muted)]">
+                    <span class="font-medium text-[color:var(--admin-text)]">{{ getTrackArtistLabel(selectedTrack) }}</span>
+                    <span class="text-[color:var(--admin-border-strong)]">•</span>
+                    <span class="font-code-mono text-sm uppercase">{{ formatTrackGenresDisplay(selectedTrack) }}</span>
+                  </div>
                 </div>
-                <div class="flex items-start justify-between gap-4">
-                  <dt class="text-[color:var(--admin-text-muted)]">Thể loại</dt>
-                  <dd class="text-right font-semibold text-[color:var(--admin-text)]">
-                    {{ (selectedTrack.genres || []).map(resolveProductGenreLabel).join(', ') || '—' }}
-                  </dd>
-                </div>
-                <div class="flex items-start justify-between gap-4">
-                  <dt class="text-[color:var(--admin-text-muted)]">Use-case</dt>
-                  <dd class="text-right font-semibold text-[color:var(--admin-text)]">
-                    {{ (selectedTrack.useCases || []).map(resolveProductUseCaseLabel).join(', ') || '—' }}
-                  </dd>
-                </div>
-                <div class="flex items-start justify-between gap-4">
-                  <dt class="text-[color:var(--admin-text-muted)]">Thời lượng</dt>
-                  <dd class="text-right font-semibold text-[color:var(--admin-text)]">
-                    {{ typeof selectedTrack.duration === 'number' ? `${selectedTrack.duration}s` : '—' }}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </article>
-        </section>
 
-        <section v-else-if="isRightsSection" class="mt-6 space-y-6">
-          <article class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-5 shadow-sm [border-color:var(--admin-border)]">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div class="text-sm font-bold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Quyền bán</div>
-                <div class="mt-2 text-sm text-[color:var(--admin-text-muted)]">
-                  Chọn tập quyền cuối cùng cho sản phẩm dựa trên hồ sơ pháp lý đã được duyệt.
+                <div class="relative group py-8">
+                  <div class="absolute inset-0 bg-[color:var(--admin-primary-50)]/30 rounded-[40px] blur-3xl -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                  <div class="flex items-center gap-10 mb-8 px-4">
+                    <ProductWavePreview
+                      hero
+                      :audio-url="originalAudioUrls[selectedTrack.id] ?? null"
+                      :disabled="!selectedTrack.originalAudioKey"
+                      :track-status="selectedTrack.status"
+                      :right-label="formatDuration(selectedTrack.duration)"
+                      class="w-full"
+                    />
+                  </div>
+                  <div class="flex items-center justify-center gap-2 mt-4 text-[color:var(--admin-text-muted)]">
+                    <i class="pi pi-wave-pulse !text-sm"></i>
+                    <span class="text-metadata font-code-mono uppercase">{{ getOriginalAudioFileLabel(selectedTrack) }} • High Fidelity Lossless</span>
+                    <HintIcon content="Đây là bản nhạc gốc chất lượng cao nhất mà bạn đã tải lên. Người mua sẽ nghe thử một đoạn ngắn trên chợ, còn bản đầy đủ chỉ được tải về sau khi họ mua thành công." placement="bottom" />
+                  </div>
                 </div>
-              </div>
-              <button type="button" :class="primaryButtonClass" :disabled="isLoading" @click="openApprovedPermissionsDialog">
-                <i class="pi pi-sliders-h mr-2" />
-                Chọn quyền bán
-              </button>
-            </div>
 
-            <div class="mt-5 rounded-xl border bg-[color:var(--admin-surface-1)] px-4 py-4 text-sm [border-color:var(--admin-border)]">
-              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Đang chọn</div>
-              <div class="mt-2 text-[color:var(--admin-text)]">
-                {{ (selectedTrack.allowedPermissionIds || []).length }} quyền
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section v-else-if="isPricingSection" class="mt-6 space-y-6">
-          <article class="rounded-[28px] border bg-[color:var(--admin-surface-0)] p-5 shadow-sm [border-color:var(--admin-border)]">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div class="text-sm font-bold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Nền tảng định giá</div>
-                <div class="mt-2 text-sm text-[color:var(--admin-text-muted)]">
-                  Thêm nền tảng và cấu hình giá theo biến thể trước khi lên sàn.
-                </div>
-              </div>
-              <button
-                type="button"
-                :class="secondaryButtonClass"
-                :disabled="pricingCatalogLoading || pricingActionLoading"
-                @click="fetchPricingPlatforms"
-              >
-                <i class="pi pi-refresh mr-2" />
-                Làm mới
-              </button>
-            </div>
-
-            <div class="mt-5 grid gap-4 lg:grid-cols-2">
-              <div class="rounded-xl border bg-[color:var(--admin-surface-1)] p-4 [border-color:var(--admin-border)]">
-                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thêm nền tảng</div>
-                <div class="mt-3 space-y-2">
+                <div class="flex flex-wrap justify-center items-center gap-4">
                   <button
-                    v-for="platform in availablePricingPlatforms"
-                    :key="platform.type"
                     type="button"
-                    class="flex w-full items-start justify-between gap-3 rounded-xl border bg-[color:var(--admin-surface-0)] px-4 py-3 text-left transition hover:bg-[color:var(--admin-surface-2)] disabled:cursor-not-allowed disabled:opacity-60"
-                    style="border-color: var(--admin-border)"
-                    :disabled="!platform.isEligible || pricingActionLoading"
-                    @click="joinPricingPlatform(platform.type)"
+                    class="bg-[color:var(--admin-primary-600)] text-white px-8 py-4 rounded-xl font-body-md font-bold hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-3 disabled:opacity-60"
+                    disabled
                   >
-                    <div class="min-w-0">
-                      <div class="font-semibold text-[color:var(--admin-text)]">{{ platform.name }}</div>
-                      <div v-if="!platform.isEligible" class="mt-1 text-xs text-[color:var(--admin-danger-700)]">
-                        Thiếu quyền: {{ platform.missingRequiredPermissions.map((p) => p.name).join(', ') }}
-                      </div>
-                    </div>
-                    <i class="pi pi-plus mt-1 text-[color:var(--admin-text-muted)]" />
+                    <i :class="selectedTrack.status === 'PUBLISHED' ? 'pi pi-eye-slash' : 'pi pi-upload'"></i>
+                    {{ selectedTrack.status === 'PUBLISHED' ? 'Ẩn sản phẩm' : 'Phát hành bản mới' }}
+                  </button>
+                  <HintIcon content="Nút này hiện đang bị khoá. Để mở khoá và phát hành bài lên chợ, bạn cần hoàn thành 3 bước: (1) Nộp đầy đủ giấy tờ pháp lý và được Musica chấp thuận, (2) Chọn ít nhất một quyền bán trong tab Quyền &amp; Giấy phép, (3) Thiết lập giá bán trong tab Giá bán." placement="bottom" />
+                  <button type="button" class="bg-[color:var(--admin-surface-2)] text-[color:var(--admin-text)] px-6 py-4 rounded-xl font-body-md font-medium hover:bg-[color:var(--admin-surface-2)] transition-all flex items-center gap-2 border [border-color:var(--admin-border)]" @click="openUploadDialog">
+                    <i class="pi pi-download"></i>
+                    Tải bản gốc
+                  </button>
+                  <button type="button" class="bg-[color:var(--admin-surface-2)] text-[color:var(--admin-text)] px-6 py-4 rounded-xl font-body-md font-medium hover:bg-[color:var(--admin-surface-2)] transition-all flex items-center gap-2 border [border-color:var(--admin-border)]" :disabled="!selectedTrack.sheetMusicPdfKey" @click="openSheetMusicPdf(selectedTrack)">
+                    <i class="pi pi-file-pdf"></i>
+                    Mở PDF
+                  </button>
+                  <div class="w-[1px] h-10 bg-[color:var(--admin-border)] opacity-50 mx-2"></div>
+                  <button type="button" class="bg-[color:var(--admin-danger-50)] text-[color:var(--admin-danger-700)] px-6 py-4 rounded-xl font-body-md font-medium hover:bg-[color:var(--admin-danger-50)] transition-all flex items-center gap-2 border [border-color:var(--admin-danger-200)]" @click="openEditDialog">
+                    <i class="pi pi-pencil"></i>
+                    Sửa Metadata
                   </button>
                 </div>
               </div>
+            </section>
 
-              <div class="rounded-xl border bg-[color:var(--admin-surface-1)] p-4 [border-color:var(--admin-border)]">
-                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Đã tham gia</div>
-                <div v-if="pricingLoading" class="mt-3 rounded-xl border bg-[color:var(--admin-surface-0)] px-4 py-4 text-sm text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]">
-                  Đang tải...
+            <section class="max-w-6xl mx-auto px-6 pb-24 pt-12 w-full">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                <div class="md:col-span-8 bg-[color:var(--admin-surface-0)] border [border-color:var(--admin-border)] p-8 rounded-xl shadow-sm">
+                  <div class="flex items-center gap-3 mb-6">
+                    <i class="pi pi-align-left text-[color:var(--admin-primary-600)]"></i>
+                    <h3 class="text-section-heading font-section-heading text-[color:var(--admin-text)] font-bold uppercase tracking-widest">Mô tả sản phẩm</h3>
+                    <HintIcon content="Mô tả được hiển thị công khai trên trang chợ, giúp người mua hiểu nội dung và phong cách của bài nhạc." />
+                  </div>
+                  <div class="prose prose-sm max-w-none text-[color:var(--admin-text-muted)] leading-relaxed text-base">
+                    <p class="mb-4">{{ selectedTrack.description || 'Chưa có mô tả riêng cho sản phẩm.' }}</p>
+                  </div>
                 </div>
-                <div v-else class="mt-3 space-y-2">
-                  <button
-                    v-for="platform in pricingPlatforms"
-                    :key="platform.id"
-                    type="button"
-                    class="flex w-full items-center justify-between gap-3 rounded-xl border bg-[color:var(--admin-surface-0)] px-4 py-3 text-left transition hover:bg-[color:var(--admin-surface-2)]"
-                    style="border-color: var(--admin-border)"
-                    @click="selectedPricingPlatformId = platform.id"
-                  >
-                    <div class="min-w-0">
-                      <div class="font-semibold text-[color:var(--admin-text)]">{{ platform.platformName }}</div>
-                      <div class="mt-1 text-xs text-[color:var(--admin-text-muted)]">
-                        {{ platform.variantsCount }} biến thể
+
+                <div class="md:col-span-4 space-y-6">
+                  <div class="bg-[color:var(--admin-primary-600)] text-white p-8 rounded-xl shadow-lg shadow-indigo-200/40">
+                    <div class="flex justify-between items-start mb-6">
+                      <div>
+                        <div class="flex items-center gap-2 mb-2">
+                          <h3 class="text-section-heading font-section-heading text-[color:var(--admin-primary-600)]-fixed-dim font-bold uppercase tracking-widest">Quyền bán</h3>
+                          <HintIcon content="Quyền bán xác định người mua được phép làm gì với bài nhạc: phát sóng thương mại, dùng trong phim, làm nhạc nền v.v. Phải chọn ít nhất 1 quyền mới được phát hành sản phẩm." placement="bottom" />
+                        </div>
+                        <span class="text-3xl font-black">{{ (selectedTrack.allowedPermissionIds ?? []).length }}</span>
                       </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span v-if="selectedPricingPlatformId === platform.id" class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-text)]">
-                        Đang chọn
+                      <span class="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold text-white/80">
+                        {{ (selectedTrack.allowedPermissionIds ?? []).length > 0 ? 'Đã cấu hình' : 'Chưa cấu hình' }}
                       </span>
-                      <button
-                        type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg border bg-[color:var(--admin-surface-0)] px-3 text-sm font-semibold text-[color:var(--admin-danger-700)] transition hover:bg-[color:var(--admin-danger-50)]"
-                        style="border-color: var(--admin-border)"
-                        :disabled="pricingActionLoading || Boolean(platform.deletedAt)"
-                        @click.stop="removePricingPlatform(platform.platformType as PricingPlatformType)"
+                    </div>
+                    <div class="space-y-4">
+                      <div
+                        v-for="permission in getVisibleAllowedPermissions(selectedTrack)"
+                        :key="permission.id"
+                        class="flex items-center gap-3"
                       >
-                        <i class="pi pi-trash" />
-                      </button>
+                        <i class="pi pi-check-circle text-[color:var(--admin-success-700)]"></i>
+                        <span class="text-body-md font-medium truncate">{{ permission.name }}</span>
+                      </div>
+                      <div v-if="(selectedTrack.allowedPermissionIds ?? []).length === 0" class="text-sm text-white/75">
+                        Chưa có quyền bán nào được chọn.
+                      </div>
+                    </div>
+                    <button type="button" class="w-full flex items-center justify-between mt-8 pt-4 border-t border-white/10 group cursor-pointer" @click="navigateToSection('rights-license')">
+                      <span class="text-metadata font-bold uppercase">Xem chi tiết quyền bán</span>
+                      <i class="pi pi-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                    </button>
+                  </div>
+
+                  <div class="bg-[color:var(--admin-surface-0)] border [border-color:var(--admin-border)] p-6 rounded-xl flex items-center justify-between group cursor-pointer hover:border-[color:var(--admin-primary-500)] transition-colors" @click="selectedTrack.sheetMusicPdfKey ? openSheetMusicPdf(selectedTrack) : openUploadDialog()">
+                    <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-xl flex items-center justify-center" :class="selectedTrack.sheetMusicPdfKey ? 'bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]' : 'bg-[color:var(--admin-surface-2)] text-[color:var(--admin-text-muted)]'">
+                        <i class="text-lg" :class="selectedTrack.sheetMusicPdfKey ? 'pi pi-check-circle' : 'pi pi-file-pdf'"></i>
+                      </div>
+                      <div>
+                        <div class="flex items-center gap-1.5">
+                          <p class="text-body-sm font-bold text-[color:var(--admin-text)]">File khuông nhạc</p>
+                          <HintIcon content="File PDF khuông nhạc (sheet music) đính kèm bài hát. Người mua có thể tải về để biểu diễn hoặc chỉnh sửa theo giấy phép đã mua." />
+                        </div>
+                        <p class="text-metadata text-[color:var(--admin-text-muted)] mt-1">{{ selectedTrack.sheetMusicPdfKey ? 'Sẵn sàng sử dụng' : 'Chưa có file PDF' }}</p>
+                      </div>
+                    </div>
+                    <i class="pi pi-external-link text-[color:var(--admin-text-muted)] group-hover:text-[color:var(--admin-primary-600)]"></i>
+                  </div>
+                </div>
+
+                <div class="md:col-span-12 grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div class="bg-[color:var(--admin-surface-0)] border [border-color:var(--admin-border)] p-6 rounded-xl">
+                    <span class="text-section-heading font-section-heading text-[color:var(--admin-text-muted)] uppercase block mb-2">Thời lượng</span>
+                    <span class="text-2xl font-bold text-[color:var(--admin-text)]">{{ formatDuration(selectedTrack.duration) }}</span>
+                  </div>
+                  <div class="bg-[color:var(--admin-surface-0)] border [border-color:var(--admin-border)] p-6 rounded-xl">
+                    <div class="flex items-center gap-1.5 mb-2">
+                      <span class="text-section-heading font-section-heading text-[color:var(--admin-text-muted)] uppercase">Use-case</span>
+                      <HintIcon content="Mục đích sử dụng của bài nhạc này là gì — ví dụ: nhạc đám cưới, nhạc nền văn phòng, nhạc phim. Thông tin này giúp người mua tìm đúng bài khi họ tìm kiếm trên chợ." />
+                    </div>
+                    <span class="text-xl font-bold text-[color:var(--admin-text)] truncate block">{{ formatTrackUseCasesDisplay(selectedTrack) }}</span>
+                  </div>
+                  <div class="md:col-span-2 bg-[color:var(--admin-surface-0)] border [border-color:var(--admin-border)] p-6 rounded-xl">
+                    <span class="text-section-heading font-section-heading text-[color:var(--admin-text-muted)] uppercase block mb-2">Mã sản phẩm</span>
+                    <span class="text-code-mono font-code-mono text-[color:var(--admin-text)] truncate block">{{ selectedTrack.id }}</span>
+                  </div>
+                </div>
+
+                <div class="md:col-span-12">
+                  <button type="button" class="w-full bg-[color:var(--admin-surface-1)] border-2 border-dashed [border-color:var(--admin-border)] rounded-3xl py-12 px-6 flex flex-col items-center justify-center gap-4 hover:bg-[color:var(--admin-surface-2)] hover:border-[color:var(--admin-primary-500)] transition-all group" @click="openUploadDialog">
+                    <div class="w-16 h-16 rounded-full bg-[color:var(--admin-surface-0)] flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <i class="pi pi-upload text-[color:var(--admin-primary-600)] !text-2xl"></i>
+                    </div>
+                    <div class="text-center">
+                      <div class="flex items-center justify-center gap-2 mb-1">
+                        <span class="text-body-md font-bold text-[color:var(--admin-text)]">Upload file PDF khuông nhạc mới</span>
+                        <HintIcon content="Upload file PDF khuông nhạc để cung cấp tài liệu đính kèm cho bài hát. File này sẽ xuất hiện kèm sản phẩm khi người mua tải về theo giấy phép đã mua." placement="bottom" />
+                      </div>
+                      <span class="text-metadata text-[color:var(--admin-text-muted)]">Chọn file PDF để cập nhật tài liệu đính kèm cho bài hát này.</span>
                     </div>
                   </button>
                 </div>
               </div>
-            </div>
-          </article>
+            </section>
+          </section>
 
-          <div v-if="selectedPricingPlatform" class="space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-[color:var(--admin-text)]">
-                {{ selectedPricingPlatform.platformName }}
+          <section v-else-if="activeSection === 'rights-license'" class="bg-[color:var(--admin-surface-0)] min-h-full">
+            <div class="border-b [border-color:var(--admin-border)] px-8 py-3.5">
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-2.5">
+                  <i class="pi pi-book text-[color:var(--admin-primary-600)]" />
+                  <h1 class="text-sm font-bold uppercase tracking-[0.14em] text-[color:var(--admin-text)]">Quyền & Giấy phép</h1>
+                  <HintIcon content="Đây là nơi quản lý giấy tờ pháp lý cho bài nhạc của bạn. Musica cần xác nhận rằng bạn có đủ quyền sở hữu và được phép bán bài nhạc này trước khi cho phép nó xuất hiện trên chợ." placement="bottom" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" :class="secondaryButtonClass" disabled>
+                    <i class="pi pi-external-link mr-1.5 text-[11px]" />Compliance
+                  </button>
+                  <button type="button" :class="primaryButtonClass" @click="openApprovedPermissionsDialog">
+                    <i class="pi pi-pencil mr-1.5" />Chọn quyền
+                  </button>
+                </div>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <button type="button" :class="secondaryButtonClass" :disabled="!selectedPricingFormulaOverview" @click="pricingFormulaDialogVisible = true">
-                  <i class="pi pi-chart-line mr-2" />
-                  Công thức
+            </div>
+
+            <div class="mx-auto max-w-2xl px-8 py-8 space-y-6">
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <div class="flex items-center gap-2 text-[color:var(--admin-text-muted)]">
+                  <span>Pháp lý:</span>
+                  <HintIcon content="Cho biết hồ sơ pháp lý của bạn có đủ hay chưa. Nếu đã đủ giấy tờ, bạn mới có thể tiếp tục chọn quyền bán và đưa bài lên chợ. Nếu chưa đủ, hãy liên hệ Musica để được hướng dẫn bổ sung." />
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                    :class="getProductComplianceLegalStatusClass(complianceLegalStatusSafe)"
+                  >
+                    <i
+                      class="text-[10px]"
+                      :class="complianceLegalStatusSafe === 'SUFFICIENT'
+                        ? 'pi pi-check-circle'
+                        : complianceLegalStatusSafe === 'INSUFFICIENT'
+                          ? 'pi pi-exclamation-triangle'
+                          : 'pi pi-clock'"
+                    />
+                    {{ formatComplianceLegalStatusLabel(complianceLegalStatusSafe) }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-2 text-[color:var(--admin-text-muted)]">
+                  <span>Kiểm duyệt:</span>
+                  <HintIcon content="Kết quả kiểm duyệt nội dung từ đội ngũ Musica. Đã duyệt nghĩa là bài nhạc đạt tiêu chuẩn nội dung. Đang chờ nghĩa là đội ngũ chưa xem xét xong. Bị từ chối nghĩa là bài có vấn đề — hãy liên hệ bộ phận hỗ trợ để biết cách xử lý." />
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                    :class="getProductComplianceReviewStatusClass(complianceReviewStatusSafe)"
+                  >
+                    <i
+                      class="text-[10px]"
+                      :class="complianceReviewStatusSafe === 'APPROVED'
+                        ? 'pi pi-check-circle'
+                        : complianceReviewStatusSafe === 'REJECTED'
+                          ? 'pi pi-times-circle'
+                          : 'pi pi-clock'"
+                    />
+                    {{ formatComplianceReviewStatusLabel(complianceReviewStatusSafe) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="border-t [border-color:var(--admin-border)]" />
+
+              <div>
+                <div class="mb-3 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <h2 class="text-sm font-semibold text-[color:var(--admin-text)]">
+                      Quyền bán
+                      <span class="ml-1 text-[color:var(--admin-text-muted)] font-normal">({{ (selectedTrack.allowedPermissionIds ?? []).length }})</span>
+                    </h2>
+                    <HintIcon content="Chọn đúng các quyền phù hợp với giấy phép bạn muốn cấp cho người mua. Mỗi quyền có căn cứ pháp lý rõ ràng theo quy định bản quyền Việt Nam." />
+                  </div>
+                </div>
+
+                <div
+                  v-if="(selectedTrack.allowedPermissionIds ?? []).length === 0"
+                  class="rounded-xl border border-dashed [border-color:var(--admin-border)] bg-[color:var(--admin-surface-1)] px-6 py-10 text-center"
+                >
+                  <p class="text-sm text-[color:var(--admin-text-muted)]">Chưa chọn quyền bán nào.</p>
+                  <button type="button" :class="primaryButtonClass" class="mt-4" @click="openApprovedPermissionsDialog">
+                    <i class="pi pi-pencil mr-1.5" />Chọn quyền ngay
+                  </button>
+                </div>
+
+                <ul v-else class="divide-y [divide-color:var(--admin-border)] rounded-xl border [border-color:var(--admin-border)]">
+                  <li
+                    v-for="(permission, idx) in selectedAllowedPermissions"
+                    :key="`rl-${idx}`"
+                    class="flex items-start gap-3 px-4 py-3.5"
+                  >
+                    <i class="pi pi-check-circle mt-0.5 shrink-0 text-sm text-[color:var(--admin-success-600)]" />
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium text-[color:var(--admin-text)]">{{ permission.name }}</p>
+                      <p class="mt-0.5 text-xs text-[color:var(--admin-text-muted)]">{{ permission.lawReference }}</p>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section v-else class="bg-[color:var(--admin-surface-0)] min-h-full pb-16">
+            <div class="border-b [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] px-8 py-3.5">
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-2.5">
+                  <i class="pi pi-calculator text-[color:var(--admin-primary-600)]" />
+                  <h1 class="text-sm font-bold uppercase tracking-[0.14em] text-[color:var(--admin-text)]">Giá bán theo biến thể</h1>
+                  <HintIcon content="Bài nhạc của bạn có thể được bán với nhiều mức giá khác nhau tuỳ theo cách người mua sử dụng — ví dụ: tải file nhạc về dùng cá nhân thì một giá, dùng cho quảng cáo thương mại thì giá khác. Mỗi kênh bán (gọi là nền tảng) sẽ có bảng giá riêng. Bạn cần thiết lập giá cho ít nhất một kênh thì bài mới được lên chợ." placement="bottom" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    :class="secondaryButtonClass"
+                    :disabled="pricingLoading || pricingCatalogLoading"
+                    @click="fetchProductPricingPlatforms"
+                  >
+                    <i class="pi pi-refresh mr-2" />
+                    Làm mới
+                  </button>
+                  <button
+                    type="button"
+                    :class="primaryButtonClass"
+                    :disabled="pricingCatalogLoading"
+                    @click="joinPlatformModalVisible = true"
+                  >
+                    <i class="pi pi-plus mr-2" />
+                    Thêm nền tảng
+                  </button>
+                  <HintIcon content="Mỗi kênh bán là một cách khác nhau để người mua tiếp cận bài nhạc của bạn. Nhấn vào đây để chọn thêm kênh mới, sau đó vào kênh đó để đặt giá cho từng trường hợp sử dụng." placement="left" />
+                </div>
+              </div>
+            </div>
+
+            <div class="mx-auto flex w-full max-w-[1800px] flex-col gap-6 px-8 pt-6">
+              <div class="grid gap-4 md:grid-cols-3">
+                <article class="relative overflow-hidden rounded-xl border [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] p-5 shadow-sm">
+                  <div class="absolute inset-x-0 top-0 h-[3px] rounded-t-xl bg-[color:var(--admin-primary-100)]" />
+                  <div class="mb-3 flex items-center gap-2.5">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-600)]">
+                      <i class="pi pi-wave-pulse text-sm" />
+                    </span>
+                    <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Sản phẩm</div>
+                  </div>
+                  <div class="text-base font-bold text-[color:var(--admin-text)]">{{ selectedTrack.title }}</div>
+                  <div class="mt-1 text-sm text-[color:var(--admin-text-muted)]">{{ getTrackArtistLabel(selectedTrack) }}</div>
+                  <div class="mt-3 flex items-center gap-1.5">
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                      :class="pricingSummary.configured
+                        ? 'bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]'
+                        : 'bg-[color:var(--admin-surface-2)] text-[color:var(--admin-text-muted)]'"
+                    >
+                      <i class="pi pi-check-circle text-[10px]" v-if="pricingSummary.configured" />
+                      {{ pricingSummary.configured ? 'Đã cấu hình pricing' : 'Chưa cấu hình' }}
+                    </span>
+                  </div>
+                </article>
+
+                <article class="relative overflow-hidden rounded-xl border [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] p-5 shadow-sm">
+                  <div class="absolute inset-x-0 top-0 h-[3px] rounded-t-xl bg-[color:var(--admin-primary-400)]" />
+                  <div class="mb-3 flex items-center gap-2.5">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--admin-primary-50)] text-[color:var(--admin-primary-600)]">
+                      <i class="pi pi-desktop text-sm" />
+                    </span>
+                    <div class="flex items-center gap-1.5">
+                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Platform đã join</div>
+                      <HintIcon content="Số kênh bán mà bài nhạc này đang tham gia. Mỗi kênh có cách định giá và đối tượng người mua riêng. Càng nhiều kênh, bài nhạc càng tiếp cận được nhiều người hơn." />
+                    </div>
+                  </div>
+                  <div class="text-4xl font-black text-[color:var(--admin-primary-600)]">{{ pricingSummary.platformCount }}</div>
+                  <div class="mt-2 text-xs text-[color:var(--admin-text-muted)]">Mỗi platform có một bảng giá riêng.</div>
+                </article>
+
+                <article class="relative overflow-hidden rounded-xl border [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] p-5 shadow-sm">
+                  <div class="absolute inset-x-0 top-0 h-[3px] rounded-t-xl bg-[color:var(--admin-success-500)]" />
+                  <div class="mb-3 flex items-center gap-2.5">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)]">
+                      <i class="pi pi-tags text-sm" />
+                    </span>
+                    <div class="flex items-center gap-1.5">
+                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Variant đã cấu hình</div>
+                      <HintIcon content="Tổng số mức giá đã được thiết lập trên tất cả kênh bán. Mỗi mức giá tương ứng với một trường hợp sử dụng cụ thể — ví dụ: dùng cá nhân thì một giá, dùng làm nhạc nền quảng cáo thì giá khác. Mức giá nào chưa bật sẽ không hiện ra cho người mua." />
+                    </div>
+                  </div>
+                  <div class="text-4xl font-black text-[color:var(--admin-success-700)]">{{ pricingSummary.variantCount }}</div>
+                  <div class="mt-2 text-xs text-[color:var(--admin-text-muted)]">Bao gồm variant active và inactive.</div>
+                </article>
+              </div>
+
+              <div v-if="pricingLoading" class="rounded-lg border [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] px-5 py-8 text-sm text-[color:var(--admin-text-muted)] shadow-sm">
+                Đang tải danh sách nền tảng...
+              </div>
+
+              <div
+                v-else-if="pricingPlatforms.length === 0"
+                class="rounded-lg border border-dashed [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] px-5 py-12 text-center shadow-sm"
+              >
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--admin-surface-1)] text-[color:var(--admin-text-muted)]">
+                  <i class="pi pi-calculator text-xl" />
+                </div>
+                <h3 class="mt-4 text-base font-semibold text-[color:var(--admin-text)]">Chưa có nền tảng nào được thêm</h3>
+                <p class="mt-2 text-sm text-[color:var(--admin-text-muted)]">
+                  Nhấn "Thêm nền tảng" để bắt đầu cấu hình bảng giá cho sản phẩm.
+                </p>
+                <button
+                  type="button"
+                  class="mt-5 inline-flex items-center gap-2 rounded-xl bg-[color:var(--admin-primary-600)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-primary-700)]"
+                  @click="joinPlatformModalVisible = true"
+                >
+                  <i class="pi pi-plus" />
+                  Thêm nền tảng
                 </button>
               </div>
+
+              <div v-else-if="selectedPricingPlatform" class="space-y-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-base font-bold text-[color:var(--admin-text)]">{{ selectedPricingPlatform.platformName }}</h2>
+                    <HintIcon content="Đây là kênh bán bạn đang đặt giá. Nhấn nút 'Công thức' để xem hệ thống tính giá như thế nào. Hãy điền giá cho từng trường hợp sử dụng bên dưới — trường hợp nào chưa có giá sẽ không hiển thị cho người mua." />
+                    <span class="inline-flex items-center rounded-full border [border-color:var(--admin-border)] bg-[color:var(--admin-surface-1)] px-2.5 py-0.5 text-xs font-semibold text-[color:var(--admin-text-muted)]">
+                      {{ isSelectedPricingTableLoading ? '...' : selectedPricingVariantBadge }}
+                    </span>
+                    <HintIcon content="Số mức giá đã đặt xong trên tổng số mức giá có thể thiết lập cho kênh này. Mức giá nào chưa điền hoặc chưa bật sẽ bị ẩn — người mua sẽ không thấy tuỳ chọn đó." placement="bottom" />
+                    <span v-if="selectedPricingPlatform.isDeprecated" class="inline-flex items-center rounded-full bg-[color:var(--admin-warning-50)] px-2.5 py-0.5 text-xs font-semibold text-[color:var(--admin-warning-700)]">
+                      Registry cũ
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      v-if="selectedPricingFormulaOverview"
+                      type="button"
+                      class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-text-muted)] transition [border-color:var(--admin-border)] hover:bg-[color:var(--admin-surface-1)] hover:text-[color:var(--admin-text)]"
+                      @click="pricingFormulaDialogVisible = true"
+                    >
+                      <i class="pi pi-calculator text-[11px]" />
+                      Công thức
+                    </button>
+                    <button
+                      v-if="!selectedPricingPlatform.deletedAt"
+                      type="button"
+                      class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-text-muted)] transition [border-color:var(--admin-border)] hover:bg-[color:var(--admin-surface-1)] hover:text-[color:var(--admin-danger-600)] disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="pricingActionLoading"
+                      @click="confirmDeletePricingPlatform(selectedPricingPlatform)"
+                    >
+                      <i class="pi pi-trash text-[11px]" />
+                      Gỡ
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  v-if="selectedPricingWarnings.length > 0"
+                  class="flex items-start gap-2.5 rounded-lg border border-[color:var(--admin-warning-200)] bg-[color:var(--admin-warning-50)] px-4 py-3"
+                >
+                  <i class="pi pi-exclamation-triangle mt-0.5 shrink-0 text-sm text-[color:var(--admin-warning-600)]" />
+                  <ul class="space-y-0.5 text-xs text-[color:var(--admin-warning-800)]">
+                    <li
+                      v-for="warning in selectedPricingWarnings"
+                      :key="`${selectedPricingPlatform.id}-${warning}`"
+                    >
+                      {{ warning }}
+                    </li>
+                  </ul>
+                </div>
+
+                <ProductPricingTableSection
+                  v-if="!selectedPricingPlatform.isDeprecated && !isSelectedPricingPlatformArchived"
+                  :schema="selectedPricingSchema"
+                  :rows="selectedPricingTableRows"
+                  :drafts="selectedPricingDrafts"
+                  :loading="isSelectedPricingTableLoading"
+                  :saving="isSelectedPricingTableSaving"
+                  :dirty-count="selectedPricingDirtyCount"
+                  @refresh="fetchPricingTable(selectedPricingPlatform)"
+                  @reset="resetSelectedPricingTableDrafts"
+                  @save="saveSelectedPricingTable"
+                  @update-selling-price="updatePricingTableSellingPrice($event.key, $event.value)"
+                  @update-is-active="updatePricingTableIsActive($event.key, $event.value)"
+                />
+              </div>
+
+              <div
+                v-else
+                class="rounded-lg border border-dashed [border-color:var(--admin-border)] bg-[color:var(--admin-surface-0)] px-5 py-10 text-center text-sm text-[color:var(--admin-text-muted)] shadow-sm"
+              >
+                Chọn nền tảng từ menu điều hướng bên trái.
+              </div>
             </div>
+          </section>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
 
-            <ProductPricingTableSection
-              :schema="selectedPricingSchema"
-              :rows="selectedPricingTableRows"
-              :drafts="selectedPricingDrafts"
-              :loading="isSelectedPricingTableLoading"
-              :saving="isSelectedPricingTableSaving"
-              :dirty-count="selectedPricingDirtyCount"
-              @refresh="fetchPricingTable(selectedPricingPlatform)"
-              @reset="resetSelectedPricingTableDrafts"
-              @save="saveSelectedPricingTable"
-              @update-selling-price="updatePricingTableSellingPrice($event.key, $event.value)"
-              @update-is-active="updatePricingTableIsActive($event.key, $event.value)"
-            />
-          </div>
-        </section>
-      </main>
-    </div>
-
-    <div v-else class="mx-auto w-full max-w-[1200px] px-4 py-10">
-      <div
-        v-if="isLoading"
-        class="rounded-xl border border-dashed bg-[color:var(--admin-surface-0)] px-6 py-16 text-center text-sm text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]"
-      >
-        Đang tải...
-      </div>
-      <div
-        v-else
-        class="rounded-xl border border-dashed bg-[color:var(--admin-surface-0)] px-6 py-16 text-center text-sm text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]"
-      >
-        Không tìm thấy sản phẩm hoặc dữ liệu chi tiết không tải được.
-      </div>
+    <div
+      v-else-if="!isLoading"
+      class="rounded-xl border border-dashed bg-[color:var(--admin-surface-0)] px-6 py-16 text-center text-sm text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]"
+    >
+      Không tìm thấy sản phẩm hoặc dữ liệu chi tiết không tải được.
     </div>
 
     <ArtistProductUpsertDialog
@@ -1170,120 +1621,91 @@ const isPricingSection = computed(() => activeSection.value === 'pricing')
       @sheet-music-change="handleEditSheetMusicFileChange"
       @open-sheet-music-pdf="selectedTrack && openSheetMusicPdf(selectedTrack)"
       @submit="confirmSubmitEdit"
-    >
-      <template #wavePreview="{ audioUrl }">
-        <ProductWavePreview compact :audio-url="audioUrl" :disabled="!audioUrl" :track-status="selectedTrack?.status" />
-      </template>
-    </ArtistProductUpsertDialog>
+    />
 
-    <PricingFormulaOverviewDialog v-model:visible="pricingFormulaDialogVisible" :formula-overview="selectedPricingFormulaOverview" />
+    <PricingFormulaOverviewDialog
+      v-model:visible="pricingFormulaDialogVisible"
+      :formula-overview="selectedPricingFormulaOverview"
+    />
+
+    <JoinPlatformModal
+      v-model:visible="joinPlatformModalVisible"
+      :platforms="availablePricingPlatforms"
+      :action-loading="pricingActionLoading"
+      @join="joinPricingPlatform"
+    />
+
+    <ProductAllowedPermissionsDialog
+      v-model:visible="approvedPermissionsDialogVisible"
+      :track-title="approvedPermissionsTrack?.title ?? null"
+      :detail-status-label="approvedPermissionsDetailLabel"
+      :permission-options="approvedPermissionOptions"
+      :selected-permission-ids="selectedAllowedPermissionIds"
+      :loading="approvedPermissionsLoading"
+      :saving="approvedPermissionsSaving"
+      :can-save="canSaveAllowedPermissions"
+      @toggle-permission="toggleAllowedPermissionSelection"
+      @save="confirmSaveAllowedPermissions"
+    />
 
     <Dialog
-      v-model:visible="approvedPermissionsDialogVisible"
+      v-model:visible="uploadDialogVisible"
       modal
-      class="w-[calc(100vw-0.75rem)] sm:w-[min(860px,96vw)]"
+      class="w-[calc(100vw-0.75rem)] sm:w-[min(720px,92vw)]"
+      header="Tải audio gốc"
       :pt="{
-        content: { class: 'max-h-[calc(100svh-0.75rem)] overflow-y-auto sm:max-h-[calc(100svh-8rem)]' },
+        content: { class: 'max-h-[calc(100svh-0.75rem)] overflow-y-auto sm:max-h-[calc(100svh-10rem)]' },
         footer: { class: 'border-t px-4 py-4 sm:px-6 [border-color:var(--admin-border)]' },
       }"
     >
-      <template #header>
-        <div v-if="approvedPermissionsTrack" class="w-full">
-          <div class="text-lg font-semibold text-[color:var(--admin-text)]">Chọn quyền bán theo hồ sơ pháp lý</div>
-          <div class="mt-1 text-sm text-[color:var(--admin-text-muted)]">
-            Tinh chỉnh subset quyền bán cuối cùng cho
-            <span class="font-semibold text-[color:var(--admin-text)]">{{ approvedPermissionsTrack.title }}</span>.
-          </div>
-        </div>
-      </template>
-
-      <div class="space-y-5">
-        <section
-          v-if="approvedPermissionsTrack"
+      <div class="space-y-4">
+        <div
+          v-if="selectedTrack"
           class="rounded-lg border bg-[color:var(--admin-surface-1)] p-4 [border-color:var(--admin-border)]"
         >
-          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div class="min-w-0">
-              <div class="font-semibold text-[color:var(--admin-text)]">{{ approvedPermissionsTrack.title }}</div>
-              <div class="mt-1 text-xs text-[color:var(--admin-text-muted)]">
-                Chọn quyền bán trong đúng tập được pháp lý cấp cho sản phẩm này.
-              </div>
-            </div>
-            <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold" :class="getProductStatusClass(approvedPermissionsTrack.status)">
-              {{ formatProductStatusLabel(approvedPermissionsTrack.status) }}
-            </span>
+          <div class="text-sm font-semibold text-[color:var(--admin-text)]">{{ selectedTrack.title }}</div>
+          <div class="mt-1 text-xs text-[color:var(--admin-text-muted)]">
+            Upload file MP3 gốc mới hoặc gắn nhanh file demo để kiểm tra flow publish.
           </div>
-        </section>
+        </div>
 
-        <section class="rounded-lg border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
-          <div class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Trạng thái hồ sơ pháp lý</div>
+        <label class="block space-y-2 rounded-lg border bg-[color:var(--admin-surface-0)] p-4 [border-color:var(--admin-border)]">
+          <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Tệp</span>
+          <input type="file" accept=".mp3,audio/*" :class="fileInputClass" :disabled="uploadStatus === 'requesting' || uploadStatus === 'uploading'" @change="onUploadFileChange" />
+          <span class="text-sm text-[color:var(--admin-text-muted)]">File key sẽ được cấp tự động dạng `N.mp3` sau khi bấm tải lên.</span>
+        </label>
 
-          <div
-            v-if="approvedPermissionsLoading"
-            class="mt-3 rounded-xl border bg-[color:var(--admin-surface-1)] px-4 py-4 text-sm text-[color:var(--admin-text-muted)] [border-color:var(--admin-border)]"
+        <div class="flex flex-wrap items-center gap-2">
+          <span v-if="uploadFile" class="rounded-full bg-[color:var(--admin-primary-50)] px-3 py-1 text-xs font-medium text-[color:var(--admin-text)]">{{ uploadFile.name }}</span>
+          <span
+            v-if="uploadStatus !== 'idle'"
+            class="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] [border-color:var(--admin-border)]"
+            :class="uploadStatus === 'done'
+              ? 'bg-[color:var(--admin-accent-50)] text-[color:var(--admin-text)]'
+              : uploadStatus === 'error'
+                ? 'bg-[color:var(--admin-surface-1)] text-[color:var(--admin-text)]'
+                : 'bg-[color:var(--admin-primary-50)] text-[color:var(--admin-text)]'"
           >
-            Đang tải thông tin hồ sơ pháp lý...
-          </div>
+            {{ formatUploadStatusLabel(uploadStatus) }}
+          </span>
+        </div>
 
-          <div v-else-if="approvedPermissionsDetail" class="mt-3 space-y-4">
-            <div class="flex flex-wrap gap-2">
-              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold" :class="approvedPermissionsDetail.legalStatus === 'SUFFICIENT' ? 'bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)] [border-color:var(--admin-success-200)]' : 'bg-[color:var(--admin-warning-50)] text-[color:var(--admin-warning-800)] [border-color:var(--admin-warning-300)]'">
-                Legal: {{ approvedPermissionsDetail.legalStatus }}
-              </span>
-              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold" :class="approvedPermissionsDetail.reviewStatus === 'APPROVED' ? 'bg-[color:var(--admin-success-50)] text-[color:var(--admin-success-700)] [border-color:var(--admin-success-200)]' : 'bg-[color:var(--admin-warning-50)] text-[color:var(--admin-warning-800)] [border-color:var(--admin-warning-300)]'">
-                Review: {{ approvedPermissionsDetail.reviewStatus }}
-              </span>
-            </div>
+        <Message v-if="uploadError" severity="error">{{ uploadError }}</Message>
+        <Message v-if="uploadStatus === 'done'" severity="success">Tải file lên thành công</Message>
 
-            <div v-if="!canChooseAllowedPermissions" class="rounded-xl border bg-[color:var(--admin-primary-50)] px-4 py-3 text-sm text-[color:var(--admin-text)] [border-color:var(--admin-primary-500)]">
-              Chỉ có thể chọn quyền bán khi hồ sơ đang ở trạng thái `SUFFICIENT` và `APPROVED`.
-            </div>
-
-            <div v-else-if="approvedPermissionOptions.length === 0" class="rounded-xl border bg-[color:var(--admin-primary-50)] px-4 py-3 text-sm text-[color:var(--admin-text)] [border-color:var(--admin-primary-500)]">
-              Hồ sơ đã đủ điều kiện nhưng hiện chưa có quyền nào trong tập `Approved permissions`.
-            </div>
-
-            <div v-else class="grid gap-4">
-              <div class="flex items-center justify-between gap-3">
-                <div class="text-sm font-semibold text-[color:var(--admin-text)]">
-                  Đã chọn {{ selectedApprovedPermissionCount }}/{{ approvedPermissionOptions.length }}
-                </div>
-                <button type="button" :class="secondaryButtonClass" :disabled="approvedPermissionsSaving" @click="selectedAllowedPermissionIds = approvedPermissionOptions.map((p) => p.id)">
-                  Chọn tất cả
-                </button>
-              </div>
-
-              <div class="grid gap-2">
-                <button
-                  v-for="permission in approvedPermissionOptions"
-                  :key="permission.id"
-                  type="button"
-                  class="flex w-full items-start justify-between gap-3 rounded-xl border bg-[color:var(--admin-surface-0)] px-4 py-3 text-left transition hover:bg-[color:var(--admin-surface-2)]"
-                  style="border-color: var(--admin-border)"
-                  :disabled="approvedPermissionsSaving || !canChooseAllowedPermissions"
-                  @click="toggleAllowedPermissionSelection(permission.id)"
-                >
-                  <div class="min-w-0">
-                    <div class="font-semibold text-[color:var(--admin-text)]">{{ permission.name }}</div>
-                    <div class="mt-1 text-xs text-[color:var(--admin-text-muted)]">{{ permission.lawReference }}</div>
-                  </div>
-                  <i
-                    class="pi mt-1 text-base"
-                    :class="selectedAllowedPermissionIds.includes(permission.id) ? 'pi-check-circle text-[color:var(--admin-success-500)]' : 'pi-circle text-[color:var(--admin-border-strong)]'"
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
+        <div v-if="uploadResult" class="rounded-xl border bg-[color:var(--admin-surface-1)] p-4 text-sm text-[color:var(--admin-text)] [border-color:var(--admin-border)]">
+          <strong class="text-[color:var(--admin-text)]">File key:</strong> {{ uploadResult.fileKey }}
+        </div>
       </div>
 
       <template #footer>
-        <div class="flex w-full flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="button" :class="secondaryButtonClass" @click="approvedPermissionsDialogVisible = false">Đóng</button>
-          <button type="button" :class="primaryButtonClass" :disabled="!canSaveAllowedPermissions" @click="confirmSaveAllowedPermissions">
-            <i v-if="approvedPermissionsSaving" class="pi pi-spin pi-spinner mr-2 text-xs" />
-            Lưu quyền bán
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
+          <button type="button" :class="[secondaryButtonClass, 'w-full sm:w-auto']" @click="uploadDialogVisible = false">Đóng</button>
+          <button type="button" :class="[secondaryButtonClass, 'w-full sm:w-auto']" :disabled="uploadStatus === 'requesting' || uploadStatus === 'uploading'" @click="applyDemoAudioKey">
+            Dùng 1.mp3
+          </button>
+          <button type="button" :class="[primaryButtonClass, 'w-full sm:w-auto']" :disabled="!uploadFile || uploadStatus === 'requesting' || uploadStatus === 'uploading'" @click="submitUpload">
+            Tải lên
           </button>
         </div>
       </template>

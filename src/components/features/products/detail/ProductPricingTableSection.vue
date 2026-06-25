@@ -138,9 +138,6 @@ const getDraft = (row: PricingTableRow): PricingTableDraft =>
               Giá đang bán
             </th>
             <th class="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">
-              Đang bán
-            </th>
-            <th class="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">
               Trạng thái
             </th>
             <th class="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">
@@ -171,18 +168,6 @@ const getDraft = (row: PricingTableRow): PricingTableDraft =>
                 @input="emit('updateSellingPrice', { key: row.key, value: ($event.target as HTMLInputElement).value })"
               />
             </td>
-            <td class="px-4 py-3 align-top text-sm text-[color:var(--admin-text)]">
-              <label class="inline-flex items-center gap-2">
-                <input
-                  :checked="getDraft(row).isActive"
-                  type="checkbox"
-                  class="h-4 w-4 rounded [border-color:var(--admin-border)] text-[color:var(--admin-primary-600)] focus:ring-[color:var(--admin-ring)]"
-                  :disabled="!canEdit || saving"
-                  @change="emit('updateIsActive', { key: row.key, value: ($event.target as HTMLInputElement).checked })"
-                />
-                <span>{{ getDraft(row).isActive ? 'Bật' : 'Tắt' }}</span>
-              </label>
-            </td>
             <td class="px-4 py-3 align-top text-sm">
               <div class="flex flex-wrap gap-2">
                 <span
@@ -212,4 +197,3 @@ const getDraft = (row: PricingTableRow): PricingTableDraft =>
     </div>
   </article>
 </template>
-

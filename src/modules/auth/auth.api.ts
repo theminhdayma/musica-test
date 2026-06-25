@@ -94,3 +94,12 @@ export async function getMeApi() {
   })
   return { data: res.data }
 }
+
+export async function changePasswordApi(input: { oldPassword: string; newPassword: string }) {
+  const res = await apiRequest<{ ok: true }>({
+    path: '/me/changePassword',
+    method: 'POST',
+    body: input
+  })
+  return { data: res.data }
+}

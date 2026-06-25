@@ -1,0 +1,176 @@
+:root {
+  --admin-surface-0: #ffffff;
+  --admin-surface-1: #f9fafb;
+  --admin-surface-2: #f3f4f6;
+  --admin-surface-3: #e5e7eb;
+  --admin-text: #111827;
+  --admin-text-muted: #6b7280;
+  --admin-border: rgba(0, 0, 0, 0.08);
+  --admin-border-strong: rgba(0, 0, 0, 0.14);
+  --admin-ring: rgba(99, 102, 241, 0.2);
+
+  --admin-primary-rgb: 99 102 241;
+  --admin-accent-rgb: 139 92 246;
+  --admin-success-rgb: 16 185 129;
+  --admin-warning-rgb: 245 158 11;
+  --admin-danger-rgb: 239 68 68;
+
+  --admin-neutral-900: #111827;
+  --admin-neutral-800: #1f2937;
+  --admin-neutral-700: #6b7280;
+  --admin-neutral-200: #e5e7eb;
+  --admin-neutral-100: #f9fafb;
+  --admin-slate-rgb: 100 116 139;
+  --admin-slate-50: #f8fafc;
+  --admin-slate-100: #f1f5f9;
+  --admin-slate-700: #334155;
+
+  --admin-primary-core: #6366f1;
+  --admin-primary-50: #eef2ff;
+  --admin-primary-100: #e0e7ff;
+  --admin-primary-200: #c7d2fe;
+  --admin-primary-300: #a5b4fc;
+  --admin-primary-400: #818cf8;
+  --admin-primary-500: #6366f1;
+  --admin-primary-600: #4f46e5;
+  --admin-primary-700: #4338ca;
+  --admin-primary-800: #3730a3;
+  --admin-primary-900: #312e81;
+  --admin-primary-contrast: #ffffff;
+  --admin-primary-soft: rgb(var(--admin-primary-rgb) / 0.1);
+  --admin-primary-button-bg: var(--admin-primary-500);
+  --admin-primary-button-hover: var(--admin-primary-600);
+  --admin-primary-button-active: var(--admin-primary-700);
+  --admin-primary-button-text: var(--admin-primary-contrast);
+
+  --admin-accent-core: #8b5cf6;
+  --admin-accent-50: #f5f3ff;
+  --admin-accent-100: #ede9fe;
+  --admin-accent-200: #ddd6fe;
+  --admin-accent-300: #c4b5fd;
+  --admin-accent-400: #a78bfa;
+  --admin-accent-500: #8b5cf6;
+  --admin-accent-600: #7c3aed;
+  --admin-accent-700: #6d28d9;
+  --admin-accent-soft: rgb(var(--admin-accent-rgb) / 0.16);
+  --admin-success-500: #10b981;
+  --admin-success-700: #047857;
+  --admin-success-50: #ecfdf5;
+  --admin-info-500: var(--admin-primary-500);
+  --admin-info-700: var(--admin-primary-800);
+  --admin-info-50: var(--admin-primary-50);
+  --admin-warning-200: #fde68a;
+  --admin-warning-300: #fcd34d;
+  --admin-warning-500: #f59e0b;
+  --admin-warning-700: #b45309;
+  --admin-warning-800: #92400e;
+  --admin-warning-50: #fffbeb;
+  --admin-danger-200: #fca5a5;
+  --admin-danger-300: #f87171;
+  --admin-danger-500: #ef4444;
+  --admin-danger-700: #b91c1c;
+  --admin-danger-50: #fef2f2;
+
+  --admin-brand-gradient-start: #6366f1;
+  --admin-brand-gradient-end: #818cf8;
+  --admin-brand-contrast: #ffffff;
+  --admin-shell-bg-start: #f9fafb;
+  --admin-shell-bg-end: #f9fafb;
+  --admin-shell-spotlight-primary: rgb(var(--admin-primary-rgb) / 0.05);
+  --admin-shell-spotlight-accent: rgb(var(--admin-accent-rgb) / 0.05);
+  --admin-sidebar-bg: #ffffff;
+  --admin-sidebar-surface: #f9fafb;
+  --admin-sidebar-border: #f1f5f9;
+  --admin-sidebar-text: #111827;
+  --admin-sidebar-text-muted: #6b7280;
+  --admin-sidebar-active-bg: #6366f1;
+  --admin-sidebar-hover-bg: #f3f4f6;
+
+  --admin-elev-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --admin-elev-2: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
+  --admin-glow: 0 0 0 1px rgb(var(--admin-primary-rgb) / 0.15),
+    0 8px 20px rgb(var(--admin-primary-rgb) / 0.15);
+}
+
+.artist-scope {
+  --admin-ring: rgb(14 165 233 / 0.2);
+
+  --admin-primary-rgb: 14 165 233;
+  --admin-primary-core: #0ea5e9;
+  --admin-primary-50: #e0f2fe;
+  --admin-primary-100: #bae6fd;
+  --admin-primary-200: #7dd3fc;
+  --admin-primary-300: #38bdf8;
+  --admin-primary-400: #0ea5e9;
+  --admin-primary-500: #0ea5e9;
+  --admin-primary-600: #0284c7;
+  --admin-primary-700: #0369a1;
+  --admin-primary-800: #075985;
+  --admin-primary-900: #0c4a6e;
+
+  --admin-accent-rgb: 20 184 166;
+  --admin-accent-core: #14b8a6;
+  --admin-accent-50: #f0fdfa;
+  --admin-accent-100: #ccfbf1;
+  --admin-accent-200: #99f6e4;
+  --admin-accent-300: #5eead4;
+  --admin-accent-400: #2dd4bf;
+  --admin-accent-500: #14b8a6;
+  --admin-accent-600: #0d9488;
+  --admin-accent-700: #0f766e;
+
+  --admin-brand-gradient-start: #0ea5e9;
+  --admin-brand-gradient-end: #38bdf8;
+  --admin-shell-spotlight-primary: rgb(14 165 233 / 0.05);
+  --admin-shell-spotlight-accent: rgb(20 184 166 / 0.05);
+
+  --admin-sidebar-active-bg: #0ea5e9;
+}
+
+.text-section-heading {
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.07em;
+  font-weight: 500;
+}
+
+.text-code-mono {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.text-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.text-body-sm {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.text-body-md {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.text-metadata {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.font-section-heading {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.font-code-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.font-caption,
+.font-body-sm,
+.font-body-md,
+.font-metadata,
+.font-page-title {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}

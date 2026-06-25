@@ -256,3 +256,27 @@ img { max-width: 100%; display: block; }
 }
 .page-enter-from { opacity: 0; transform: translateY(8px); }
 .page-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* ── floating-vue: artist-hint theme ── */
+.v-popper--theme-artist-hint .v-popper__inner {
+  background: linear-gradient(135deg, #0c1e33 0%, #0e3fa0 100%);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  max-width: 280px;
+  box-shadow: 0 8px 28px rgba(12, 30, 51, 0.35), 0 2px 8px rgba(31, 109, 240, 0.25);
+  border: 1px solid rgba(31, 109, 240, 0.3);
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+}
+.v-popper--theme-artist-hint .v-popper__arrow-outer {
+  border-color: rgba(14, 63, 160, 0.85);
+}
+.v-popper--theme-artist-hint .v-popper__arrow-inner {
+  border-color: #0e3fa0;
+}
+.v-popper--theme-artist-hint.v-popper__popper {
+  z-index: 9999;
+}

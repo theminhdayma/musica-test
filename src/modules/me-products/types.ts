@@ -2,17 +2,26 @@ import type { PaginationMeta } from '../../shared/api/contracts'
 
 export type MyProductListItem = {
   id: string
-  productCode: string
   title: string
   thumbnailUrl: string | null
-  status: string
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
   createdAt: string
+  updatedAt: string
+  artistId: string
+  authorName: string | null
+  genres: string[]
+  useCases: string[]
+  duration: number | null
 }
 
 export type MyProductsListResponse = { items: MyProductListItem[] }
 export type MyProductsListMeta = PaginationMeta
 
 export type MyProductDetail = MyProductListItem & {
-  description?: string
+  description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
 }
 

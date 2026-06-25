@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import path from 'node:path'
 import { products } from './src/data/catalog.js'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -35,6 +36,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     open: false
   },
   ssgOptions: {

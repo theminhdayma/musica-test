@@ -41,6 +41,51 @@ const coverStyle = computed(() => {
     backgroundPosition: 'center'
   }
 })
+
+const durationLabel = computed(() => {
+  const s = props.item.durationSeconds
+  if (!s) return null
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${String(sec).padStart(2, '0')}`
+})
+
+const primaryGenre = computed(() => {
+  if (props.item.genres && props.item.genres.length > 0) return props.item.genres[0]
+  return props.item.genre || null
+})
+
+const secondaryGenres = computed(() => {
+  const all = props.item.genres && props.item.genres.length > 0 ? props.item.genres : props.item.genre ? [props.item.genre] : []
+  return all.slice(1, 3)
+})
+
+const topUseCases = computed(() => (props.item.useCases || []).slice(0, 2))
+
+const seed = computed(() => getStableSeed(`${props.item.id}:${props.item.title}`))
+
+const ratingValue = computed(() => {
+  const r = 3.8 + (seed.value % 13) * 0.1
+  return Math.min(5, Math.round(r * 10) / 10)
+})
+
+const reviewCount = computed(() => 12 + (seed.value % 89))
+
+const playsCount = computed(() => {
+  const base = 200 + (seed.value % 4800)
+  return base >= 1000 ? `${(base / 1000).toFixed(1)}k` : String(base)
+})
+
+const accentGradient = computed(() => {
+  const gradients = [
+    'linear-gradient(135deg, #1f6df0 0%, #2aa7d8 55%, #14b8a6 100%)',
+    'linear-gradient(135deg, #6366f1 0%, #2aa7d8 55%, #14b8a6 100%)',
+    'linear-gradient(135deg, #0e3fa0 0%, #1f6df0 60%, #14b8a6 100%)',
+    'linear-gradient(135deg, #1f6df0 0%, #6366f1 100%)',
+    'linear-gradient(135deg, #14b8a6 0%, #2aa7d8 55%, #1f6df0 100%)',
+  ]
+  return gradients[seed.value % gradients.length]
+})
 </script>
 
 <template>
@@ -49,6 +94,7 @@ const coverStyle = computed(() => {
     class="pcard"
     :class="[{ 'pcard--new': !!badge, 'pcard--hot': showTrendingBadge }]"
   >
+    <!-- Badges -->
     <div v-if="badge" class="pcard__badge pcard__badge--new">
       <span>{{ badge.label }}</span>
       <svg v-if="showFlame" class="pcard__badge-flame" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -62,43 +108,106 @@ const coverStyle = computed(() => {
       <span>Hot</span>
     </div>
 
+    <!-- Sheet music badge -->
+    <div v-if="item.hasSheetMusic" class="pcard__sheet-badge">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/></svg>
+      Bản nhạc
+    </div>
+
     <!-- Cover / Thumbnail -->
     <div class="pcard__cover" :style="coverStyle">
+      <!-- Accent line at top -->
+      <div class="pcard__accent-line" :style="{ background: accentGradient }" />
+
+      <!-- Waveform bars -->
+      <div class="pcard__wave">
+        <span
+          v-for="i in 20"
+          :key="i"
+          class="pcard__wave-bar"
+          :style="{ height: (25 + ((seed + i * 7) % 70)) + '%' }"
+        />
+      </div>
+
       <!-- Play overlay -->
       <div class="pcard__play-overlay">
+        <div class="pcard__play-btn" :style="{ background: accentGradient }">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </div>
         <div class="pcard__quick-actions">
           <button class="pcard__qa-btn" @click.prevent>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             Giỏ hàng
           </button>
+          <button class="pcard__qa-btn pcard__qa-btn--icon" @click.prevent>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </button>
         </div>
+      </div>
+
+      <!-- Duration chip -->
+      <div v-if="durationLabel" class="pcard__duration">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+        {{ durationLabel }}
       </div>
     </div>
 
     <!-- Body -->
     <div class="pcard__body">
-      <div class="pcard__summary">
-        <div class="pcard__summary-main">
-          <div class="pcard__title" :title="item.title">{{ item.title }}</div>
-          <div class="pcard__artist">{{ item.artistDisplayName }}</div>
+      <!-- Artist row -->
+      <div class="pcard__artist-row">
+        <div class="pcard__artist-avatar" :style="{ background: accentGradient }">
+          {{ item.artistDisplayName.charAt(0).toUpperCase() }}
         </div>
-        <div class="pcard__summary-side">
-          <span v-if="item.genre" class="pcard__meta-item pcard__meta-item--key">{{ item.genre }}</span>
-        </div>
+        <span class="pcard__artist-name">{{ item.artistDisplayName }}</span>
       </div>
 
-      <!-- Footer -->
+      <!-- Title -->
+      <div class="pcard__title" :title="item.title">{{ item.title }}</div>
+
+      <!-- Genre tags -->
+      <div v-if="primaryGenre" class="pcard__genres">
+        <span class="pcard__genre-tag pcard__genre-tag--primary">{{ primaryGenre }}</span>
+        <span v-for="g in secondaryGenres" :key="g" class="pcard__genre-tag">{{ g }}</span>
+      </div>
+
+      <!-- Use-cases -->
+      <div v-if="topUseCases.length" class="pcard__usecases">
+        <span v-for="uc in topUseCases" :key="uc" class="pcard__usecase-tag">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          {{ uc }}
+        </span>
+      </div>
+
+      <!-- Stats row -->
+      <div class="pcard__stats">
+        <span class="pcard__stat">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#facc15"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          {{ ratingValue }}
+          <span class="pcard__stat-mute">({{ reviewCount }})</span>
+        </span>
+        <span class="pcard__stat-sep">·</span>
+        <span class="pcard__stat">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          {{ playsCount }} lượt nghe
+        </span>
+      </div>
+
+      <!-- Divider -->
+      <div class="pcard__divider" />
+
+      <!-- Footer / Price -->
       <div class="pcard__footer">
-        <div class="pcard__price-wrap">
-          <span class="pcard__price-caption">Giá</span>
-          <div class="pcard__price-row">
-            <span class="pcard__price pcard__price--sale">{{ formatVND(pricing.currentPrice) }}</span>
-            <span class="pcard__price-original">{{ formatVND(pricing.originalPrice) }}</span>
-            <span class="pcard__discount">-{{ pricing.discountPercent }}%</span>
-          </div>
+        <div class="pcard__price-block">
+          <span class="pcard__price-sale">{{ formatVND(pricing.currentPrice) }}</span>
+          <span class="pcard__price-original">{{ formatVND(pricing.originalPrice) }}</span>
         </div>
+        <span class="pcard__discount-badge">-{{ pricing.discountPercent }}%</span>
       </div>
     </div>
+
+    <!-- Bottom glow line (shows on hover) -->
+    <div class="pcard__glow-line" :style="{ background: accentGradient }" />
   </RouterLink>
 </template>
 
@@ -110,7 +219,7 @@ const coverStyle = computed(() => {
   flex-direction: column;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   color: inherit;
   text-decoration: none;
@@ -118,57 +227,80 @@ const coverStyle = computed(() => {
   cursor: pointer;
 }
 .pcard:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--c-blue-300);
-  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(31, 109, 240, 0.16), 0 4px 16px rgba(20, 184, 166, 0.12);
+  border-color: var(--c-blue-200);
+  transform: translateY(-4px);
 }
-.pcard--hot { border-color: rgba(239, 68, 68, 0.35); }
-.pcard--new { border-color: rgba(20, 184, 166, 0.35); }
-.pcard--trend { border-color: rgba(139, 92, 246, 0.35); }
-.pcard--sale { border-color: rgba(249, 115, 22, 0.35); }
+.pcard--hot { border-color: rgba(239, 68, 68, 0.3); }
+.pcard--new { border-color: rgba(20, 184, 166, 0.3); }
 
-/* ===== Badge ===== */
+/* ===== Top accent line ===== */
+.pcard__accent-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 3;
+}
+
+/* ===== Bottom glow line (shows on hover) ===== */
+.pcard__glow-line {
+  height: 3px;
+  opacity: 0;
+  transition: opacity .3s var(--ease-out);
+  flex-shrink: 0;
+}
+.pcard:hover .pcard__glow-line { opacity: 1; }
+
+/* ===== Badges ===== */
 .pcard__badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 14px;
+  left: 12px;
   z-index: 10;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 3px 9px;
   border-radius: var(--radius-full);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  text-transform: none;
   pointer-events: none;
 }
 .pcard__badge-flame {
   color: #ffd166;
-  filter: drop-shadow(0 0 6px rgba(255, 145, 0, 0.55));
-  transform-origin: center;
+  filter: drop-shadow(0 0 4px rgba(255, 145, 0, 0.6));
   animation: flameFlicker 0.9s infinite;
 }
 .pcard__badge--hot {
   background: linear-gradient(135deg, #ef4444, #f97316);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
 }
 .pcard__badge--new {
   background: linear-gradient(135deg, #14b8a6, #2aa7d8);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.45);
+  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.4);
 }
-.pcard__badge--trend {
-  background: linear-gradient(135deg, #8b5cf6, #6d3bd7);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45);
-}
-.pcard__badge--sale {
-  background: linear-gradient(135deg, #f97316, #ef4444);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.45);
+.pcard__sheet-badge {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.92);
+  color: var(--c-blue-700);
+  border: 1px solid var(--c-blue-100);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
 @keyframes flameFlicker {
@@ -180,7 +312,7 @@ const coverStyle = computed(() => {
 .pcard__cover {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -191,12 +323,12 @@ const coverStyle = computed(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 40%;
+  height: 50%;
   display: flex;
   align-items: flex-end;
-  gap: 1.5px;
-  padding: 0 8px;
-  background: linear-gradient(to top, rgba(0,0,0,0.55), transparent);
+  gap: 2px;
+  padding: 0 10px 6px;
+  background: linear-gradient(to top, rgba(12,30,51,0.7), transparent);
   pointer-events: none;
 }
 .pcard__wave-bar {
@@ -204,11 +336,27 @@ const coverStyle = computed(() => {
   flex: 1;
   min-width: 2px;
   border-radius: 2px 2px 0 0;
-  background: rgba(255, 255, 255, 0.5);
-  transition: height .3s var(--ease-out);
+  background: rgba(255, 255, 255, 0.35);
+  transition: background .3s var(--ease-out);
 }
-.pcard:hover .pcard__wave-bar {
-  background: rgba(95, 217, 193, 0.8);
+.pcard:hover .pcard__wave-bar { background: rgba(95, 217, 193, 0.7); }
+
+/* ===== Duration chip ===== */
+.pcard__duration {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(12, 30, 51, 0.72);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
 /* ===== Play Overlay ===== */
@@ -219,60 +367,87 @@ const coverStyle = computed(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: rgba(12, 30, 51, 0.5);
+  gap: 12px;
+  background: rgba(12, 30, 51, 0.45);
   opacity: 0;
   transition: opacity .3s var(--ease-out);
   backdrop-filter: blur(3px);
 }
 .pcard:hover .pcard__play-overlay { opacity: 1; }
 
-.pcard__quick-actions {
+.pcard__play-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  transform: scale(0.88);
+  transition: transform .25s var(--ease-out);
 }
+.pcard:hover .pcard__play-btn { transform: scale(1); }
+
+.pcard__quick-actions { display: flex; gap: 8px; }
 .pcard__qa-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
+  gap: 5px;
+  padding: 6px 12px;
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-full);
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: background .2s;
   backdrop-filter: blur(4px);
 }
-.pcard__qa-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.pcard__qa-btn--icon { padding: 6px 8px; }
+.pcard__qa-btn:hover { background: rgba(255, 255, 255, 0.28); }
 
 /* ===== Body ===== */
-.pcard__body { padding: 12px 14px 14px; display: flex; flex-direction: column; flex: 1; }
-
-.pcard__summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-}
-
-.pcard__summary-main {
-  min-width: 0;
-}
-
-.pcard__summary-side {
+.pcard__body {
+  padding: 13px 14px 12px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  min-width: fit-content;
+  flex: 1;
+  gap: 7px;
 }
 
+/* ===== Artist row ===== */
+.pcard__artist-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pcard__artist-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.pcard__artist-name {
+  font-size: 12px;
+  color: var(--c-text-mute);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Title ===== */
 .pcard__title {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--c-text);
@@ -282,104 +457,120 @@ const coverStyle = computed(() => {
   line-height: 1.3;
 }
 
-.pcard__artist {
-  font-size: 12.5px;
-  color: var(--c-text-soft);
-  font-weight: 600;
-  margin-top: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* ===== Genre tags ===== */
+.pcard__genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.pcard__genre-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--c-bg-mute);
+  color: var(--c-text-mute);
+}
+.pcard__genre-tag--primary {
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  border: 1px solid var(--c-blue-100);
 }
 
-.pcard__meta-item {
+/* ===== Use-cases ===== */
+.pcard__usecases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.pcard__usecase-tag {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 3px 8px;
-  background: var(--c-bg-mute);
+  padding: 2px 7px;
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--c-text-mute);
-}
-.pcard__meta-item--key {
   background: var(--c-teal-50);
   color: var(--c-teal-600);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+}
+
+/* ===== Stats row ===== */
+.pcard__stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pcard__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-soft);
+}
+.pcard__stat-mute {
+  color: var(--c-text-mute);
+  font-weight: 500;
+}
+.pcard__stat-sep {
+  font-size: 11px;
+  color: var(--c-text-mute);
+}
+
+/* ===== Divider ===== */
+.pcard__divider {
+  height: 1px;
+  background: var(--c-border);
 }
 
 /* ===== Footer / Price ===== */
 .pcard__footer {
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid var(--c-border);
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: auto;
 }
-.pcard__price-wrap {
-  position: relative;
+.pcard__price-block {
   display: flex;
   flex-direction: column;
-  padding-top: 10px;
+  gap: 1px;
 }
-.pcard__price-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-.pcard__price-caption {
-  font-size: 11px;
-  color: var(--c-text-mute);
+.pcard__price-sale {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--c-blue-600);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 .pcard__price-original {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--c-text-mute);
   text-decoration: line-through;
-  white-space: nowrap;
+  font-weight: 500;
 }
-.pcard__price {
-  font-size: 17.5px;
-  font-weight: 800;
-  color: var(--c-blue-600);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-.pcard__price--sale { color: var(--c-blue-600); }
-.pcard__discount {
+.pcard__discount-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: var(--radius-full);
-  background: linear-gradient(135deg, #fb7185, #f97316, #facc15);
+  background: linear-gradient(135deg, #fb7185, #f97316);
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 900;
   white-space: nowrap;
-  position: absolute;
-  top: -6px;
-  right: -26px;
-  z-index: 2;
-  transform: translateY(-50%);
-  box-shadow: 0 10px 26px rgba(249, 115, 22, 0.28);
-  animation: discountBlink 1.1s ease-in-out infinite;
-  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+  animation: discountPulse 2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
-@keyframes discountBlink {
-  0%, 100% {
-    transform: translateY(-50%) scale(1);
-    filter: saturate(1.05) brightness(1.02);
-    box-shadow: 0 10px 26px rgba(249, 115, 22, 0.28);
-  }
-  50% {
-    transform: translateY(calc(-50% - 1px)) scale(1.05);
-    filter: saturate(1.35) brightness(1.18);
-    box-shadow: 0 16px 38px rgba(249, 115, 22, 0.52);
-  }
+@keyframes discountPulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); transform: scale(1); }
+  50% { box-shadow: 0 6px 20px rgba(249, 115, 22, 0.5); transform: scale(1.04); }
 }
 </style>

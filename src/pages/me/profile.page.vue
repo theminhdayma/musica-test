@@ -1,18 +1,36 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import MeAccountLayout from '../../components/features/me/MeAccountLayout.vue'
 import HintIcon from '../../shared/ui/HintIcon.vue'
-import type { ArtistProfile, MeProfile } from '../../modules/auth/types'
-import { getMeApi } from '../../modules/auth/auth.api'
+import type { ArtistProfile, BuyerProfile, MeProfile } from '../../modules/auth/types'
+import { getMeApi, updateBuyerProfileApi } from '../../modules/auth/auth.api'
 import { ApiError } from '../../shared/api/errors'
+import { useAuthStore } from '../../modules/auth/auth.store'
 
+const auth = useAuthStore()
 const loading = ref(false)
+const savingBuyerProfile = ref(false)
 const errorMessage = ref<string | null>(null)
+const buyerSaveMessage = ref<string | null>(null)
+const buyerSaveError = ref<string | null>(null)
 const me = ref<MeProfile | null>(null)
 const artistProfile = ref<ArtistProfile | null>(null)
+const buyerProfile = ref<BuyerProfile | null>(null)
+const buyerForm = ref({
+  avatarUrl: '',
+  dateOfBirth: ''
+})
+
+const isArtist = computed(() => me.value?.user?.roleName === 'ARTIST')
+const isBuyer = computed(() => me.value?.user?.roleName === 'BUYER')
 
 const avatarLetter = computed(() => {
   const name = artistProfile.value?.stageName || me.value?.user?.fullName || me.value?.user?.email || '?'
+  return name.charAt(0).toUpperCase()
+})
+
+const buyerAvatarLetter = computed(() => {
+  const name = me.value?.user?.fullName || me.value?.user?.email || 'B'
   return name.charAt(0).toUpperCase()
 })
 
@@ -35,25 +53,57 @@ const countryFlag = computed(() => {
 const statusColor = computed(() => {
   const s = me.value?.user?.status
   if (s === 'ACTIVE') return 'active'
-  if (s === 'INACTIVE') return 'inactive'
+  if (s === 'INACTIVE' || s === 'LOCKED') return 'inactive'
   return 'pending'
 })
 
 const statusLabel = computed(() => {
   const s = me.value?.user?.status
   if (s === 'ACTIVE') return 'Đang hoạt động'
-  if (s === 'INACTIVE') return 'Không hoạt động'
+  if (s === 'INACTIVE' || s === 'LOCKED') return 'Không hoạt động'
   return s || '—'
 })
+
+const buyerStatusColor = computed(() => {
+  const status = String(buyerProfile.value?.buyerStatus || '').toUpperCase()
+  if (status === 'ACTIVE') return 'active'
+  if (status === 'SUSPENDED' || status === 'BANNED') return 'inactive'
+  return 'pending'
+})
+
+const buyerStatusLabel = computed(() => {
+  const status = String(buyerProfile.value?.buyerStatus || '').toUpperCase()
+  if (status === 'ACTIVE') return 'Được phép mua hàng'
+  if (status === 'SUSPENDED') return 'Tạm dừng giao dịch'
+  if (status === 'BANNED') return 'Bị chặn giao dịch'
+  return status || '—'
+})
+
+const formattedBuyerDateOfBirth = computed(() => {
+  const value = buyerProfile.value?.dateOfBirth
+  if (!value) return '—'
+  return new Date(value).toLocaleDateString('vi-VN')
+})
+
+function syncProfiles(data: MeProfile) {
+  me.value = data
+  const profile = data.profile
+  artistProfile.value = profile && 'stageName' in profile ? (profile as ArtistProfile) : null
+  buyerProfile.value = profile && 'buyerStatus' in profile ? (profile as BuyerProfile) : null
+  buyerForm.value = {
+    avatarUrl: buyerProfile.value?.avatarUrl || '',
+    dateOfBirth: buyerProfile.value?.dateOfBirth || ''
+  }
+}
 
 async function fetchMe() {
   loading.value = true
   errorMessage.value = null
   try {
     const res = await getMeApi()
-    me.value = res.data
-    const profile = res.data.profile
-    artistProfile.value = profile && 'stageName' in profile ? (profile as ArtistProfile) : null
+    syncProfiles(res.data)
+    auth.me = res.data
+    auth.syncPersisted()
   } catch (error) {
     if (error instanceof ApiError) {
       errorMessage.value = error.message
@@ -64,6 +114,31 @@ async function fetchMe() {
     }
   } finally {
     loading.value = false
+  }
+}
+
+async function saveBuyerProfile() {
+  buyerSaveMessage.value = null
+  buyerSaveError.value = null
+  savingBuyerProfile.value = true
+
+  try {
+    await updateBuyerProfileApi({
+      avatarUrl: buyerForm.value.avatarUrl.trim() || null,
+      dateOfBirth: buyerForm.value.dateOfBirth || null
+    })
+    buyerSaveMessage.value = 'Đã cập nhật hồ sơ buyer.'
+    await fetchMe()
+  } catch (error) {
+    if (error instanceof ApiError) {
+      buyerSaveError.value = error.message || 'Không thể cập nhật hồ sơ buyer.'
+    } else if (error instanceof Error) {
+      buyerSaveError.value = error.message
+    } else {
+      buyerSaveError.value = 'Không thể cập nhật hồ sơ buyer.'
+    }
+  } finally {
+    savingBuyerProfile.value = false
   }
 }
 
@@ -86,8 +161,7 @@ onMounted(() => {
         {{ errorMessage }}
       </div>
 
-      <template v-else-if="me">
-        <!-- Hero Banner -->
+      <template v-else-if="me && isArtist">
         <div class="profile-hero">
           <div class="hero-cover"></div>
           <div class="hero-body">
@@ -225,6 +299,167 @@ onMounted(() => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else-if="me && isBuyer">
+        <div class="profile-hero buyer-hero">
+          <div class="hero-cover"></div>
+          <div class="hero-body">
+            <div class="hero-avatar buyer-avatar">
+              <span class="avatar-letter">{{ buyerAvatarLetter }}</span>
+              <span class="avatar-status-dot" :class="statusColor"></span>
+            </div>
+            <div class="hero-info">
+              <div class="hero-stage-name">
+                {{ me.user.fullName || me.user.email }}
+              </div>
+              <div class="hero-meta-row">
+                <span class="hero-role-badge hero-role-badge--buyer">
+                  <i class="pi pi-shopping-bag"></i>
+                  Buyer
+                </span>
+                <span class="hero-genre-badge">
+                  <i class="pi pi-shield"></i>
+                  {{ buyerStatusLabel }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-grid">
+          <div class="profile-card">
+            <div class="card-header">
+              <div class="card-icon card-icon--blue">
+                <i class="pi pi-user"></i>
+              </div>
+              <div class="card-title">Thông tin tài khoản Buyer</div>
+              <HintIcon
+                placement="top"
+                content="Thông tin cơ bản của buyer dùng để xác thực và phục vụ giao dịch mua tác quyền số."
+              />
+            </div>
+            <div class="info-list">
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-id-card"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Họ và tên</div>
+                  <div class="info-value">{{ me.user.fullName || '—' }}</div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-envelope"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Email</div>
+                  <div class="info-value">{{ me.user.email }}</div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-phone"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Số điện thoại</div>
+                  <div class="info-value">{{ me.user.phoneNumber || '—' }}</div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-shield"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Trạng thái tài khoản</div>
+                  <div class="info-value">
+                    <span class="status-badge" :class="statusColor">{{ statusLabel }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-shopping-cart"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Trạng thái mua hàng</div>
+                  <div class="info-value">
+                    <span class="status-badge" :class="buyerStatusColor">{{ buyerStatusLabel }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-card">
+            <div class="card-header">
+              <div class="card-icon card-icon--teal">
+                <i class="pi pi-user-edit"></i>
+              </div>
+              <div class="card-title">Hồ sơ Buyer</div>
+              <HintIcon
+                placement="top"
+                content="Buyer có thể cập nhật ngày sinh và avatar URL để hoàn thiện hồ sơ giao dịch cá nhân."
+              />
+            </div>
+            <div class="info-list">
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-calendar"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Ngày sinh</div>
+                  <div class="info-value">{{ formattedBuyerDateOfBirth }}</div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-image"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Avatar URL</div>
+                  <div class="info-value profile-link-value">{{ buyerProfile?.avatarUrl || '—' }}</div>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-icon"><i class="pi pi-clock"></i></span>
+                <div class="info-content">
+                  <div class="info-label">Cập nhật gần nhất</div>
+                  <div class="info-value">
+                    {{ buyerProfile?.updatedAt ? new Date(buyerProfile.updatedAt).toLocaleString('vi-VN') : '—' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form class="buyer-profile-form" @submit.prevent="saveBuyerProfile">
+              <transition name="err-fade">
+                <div v-if="buyerSaveMessage" class="profile-banner profile-banner--success">
+                  <i class="pi pi-check-circle"></i>
+                  {{ buyerSaveMessage }}
+                </div>
+              </transition>
+              <transition name="err-fade">
+                <div v-if="buyerSaveError" class="profile-banner profile-banner--error">
+                  <i class="pi pi-times-circle"></i>
+                  {{ buyerSaveError }}
+                </div>
+              </transition>
+
+              <label class="buyer-form-field">
+                <span class="buyer-form-label">Avatar URL</span>
+                <input
+                  v-model="buyerForm.avatarUrl"
+                  type="url"
+                  class="buyer-form-input"
+                  placeholder="https://example.com/avatar.jpg"
+                />
+              </label>
+
+              <label class="buyer-form-field">
+                <span class="buyer-form-label">Ngày sinh</span>
+                <input
+                  v-model="buyerForm.dateOfBirth"
+                  type="date"
+                  class="buyer-form-input"
+                />
+              </label>
+
+              <button type="submit" class="buyer-form-submit" :disabled="savingBuyerProfile">
+                <i v-if="!savingBuyerProfile" class="pi pi-save"></i>
+                <span v-else class="loading-spinner loading-spinner--button"></span>
+                {{ savingBuyerProfile ? 'Đang lưu...' : 'Lưu hồ sơ buyer' }}
+              </button>
+            </form>
           </div>
         </div>
       </template>
@@ -381,6 +616,11 @@ onMounted(() => {
   font-weight: 700;
 }
 .hero-role-badge .pi { font-size: 10px; }
+.hero-role-badge--buyer {
+  background: #eefcf7;
+  border-color: rgba(20,184,166,0.25);
+  color: var(--c-teal-600);
+}
 
 /* Bio */
 .profile-bio-card {
@@ -507,6 +747,10 @@ onMounted(() => {
   font-weight: 800;
   color: var(--c-text);
 }
+.profile-link-value {
+  white-space: normal;
+  word-break: break-word;
+}
 
 .status-badge {
   display: inline-flex;
@@ -543,6 +787,89 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.buyer-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--c-border);
+}
+.buyer-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.buyer-form-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--c-text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.buyer-form-input {
+  height: 42px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-soft);
+  color: var(--c-text);
+  padding: 0 12px;
+  font: inherit;
+  transition: border-color .2s, box-shadow .2s;
+}
+.buyer-form-input:focus {
+  outline: none;
+  border-color: var(--c-blue-300);
+  box-shadow: 0 0 0 3px var(--c-blue-50);
+  background: #fff;
+}
+.buyer-form-submit {
+  height: 44px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--grad-brand);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+}
+.buyer-form-submit:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.profile-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+}
+.profile-banner--success {
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  color: #065f46;
+}
+.profile-banner--error {
+  background: #fff1f0;
+  border: 1px solid #fecaca;
+  color: #b42318;
+}
+.loading-spinner--button {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  border-color: rgba(255,255,255,0.35);
+  border-top-color: #fff;
+}
+
 .no-profile {
   display: flex;
   flex-direction: column;
@@ -554,6 +881,10 @@ onMounted(() => {
   font-size: 13px;
 }
 .no-profile .pi { font-size: 22px; }
+
+.err-fade-enter-active, .err-fade-leave-active { transition: all .2s; }
+.err-fade-enter-from { opacity: 0; transform: translateY(-3px); }
+.err-fade-leave-to { opacity: 0; }
 
 @media (max-width: 720px) {
   .profile-grid { grid-template-columns: 1fr; }

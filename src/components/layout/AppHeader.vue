@@ -36,6 +36,10 @@ const userMenuItems = computed(() => {
     })
   } else if (canBuy.value) {
     items.push({
+      label: 'Trang cá nhân',
+      icon: 'pi pi-user',
+      command: () => void router.push({ path: '/me/profile' })
+    }, {
       label: 'Chứng nhận',
       icon: 'pi pi-check-circle',
       command: () => void router.push({ path: '/me/certificates' })

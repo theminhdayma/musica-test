@@ -46,10 +46,10 @@ export const routes = [
   { path: '/help', name: 'help', component: () => import('../pages/help/index.page.vue') },
 
   // Protected Routes
-  { path: '/me', redirect: '/me/dashboard' },
+  { path: '/me', redirect: '/me/profile' },
   { path: '/me/dashboard', name: 'my-dashboard', component: () => import('../pages/me/dashboard.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
-  { path: '/me/profile', name: 'my-profile', component: () => import('../pages/me/profile.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
-  { path: '/me/changePassword', name: 'my-change-password', component: () => import('../pages/me/change-password.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
+  { path: '/me/profile', name: 'my-profile', component: () => import('../pages/me/profile.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST', 'BUYER'] } },
+  { path: '/me/changePassword', name: 'my-change-password', component: () => import('../pages/me/change-password.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST', 'BUYER'] } },
   { path: '/me/certificates', name: 'my-certificates', component: () => import('../pages/certificates/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/certificates/:certificateId', name: 'certificate-detail', component: () => import('../pages/certificates/detail.page.vue'), props: true, meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/products', name: 'my-products', component: () => import('../pages/me-products/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },

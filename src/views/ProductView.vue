@@ -272,9 +272,11 @@ function togglePlay() {
   if (!audioElement.value) {
     audioElement.value = new Audio(url)
     audioElement.value.addEventListener('timeupdate', () => {
-      const duration = audioElement.value.duration
+      const audio = audioElement.value
+      if (!audio) return
+      const duration = audio.duration
       if (duration && !isNaN(duration) && isFinite(duration)) {
-        progress.value = (audioElement.value.currentTime / duration) * 100
+        progress.value = (audio.currentTime / duration) * 100
       }
     })
     audioElement.value.addEventListener('ended', () => {

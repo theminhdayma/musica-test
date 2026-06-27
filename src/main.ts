@@ -1,3 +1,4 @@
+import { watch } from 'vue'
 import { ViteSSG } from 'vite-ssg'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
@@ -9,6 +10,7 @@ import { routes } from './router'
 import { ApiError } from './shared/api/errors'
 import { setAccessTokenGetter } from './shared/api/http'
 import { useAuthStore } from './modules/auth/auth.store'
+import { useCartStore } from './stores/cart'
 import { installRouterGuards } from './app/routerGuards'
 import './styles/main.css'
 import './styles/admin-vars.css'
@@ -49,6 +51,7 @@ export const createApp = ViteSSG(
     })
 
     const auth = useAuthStore(pinia)
+    const cart = useCartStore(pinia)
     setAccessTokenGetter(() => auth.accessToken)
     if (!import.meta.env.SSR) {
       try {
@@ -57,6 +60,7 @@ export const createApp = ViteSSG(
       } catch {
       }
       auth.hydrate()
+      cart.syncAuthState()
       if (auth.accessToken) {
         auth.hydrateMe().catch((error) => {
           if (error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403)) {
@@ -64,6 +68,13 @@ export const createApp = ViteSSG(
           }
         })
       }
+
+      watch(
+        () => auth.accessToken,
+        () => {
+          cart.syncAuthState()
+        }
+      )
     }
     if (router) installRouterGuards({ router, auth })
   },

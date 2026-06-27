@@ -527,12 +527,15 @@ onMounted(() => {
 }
 .hero-body {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 18px;
   padding: 0 24px 22px;
-  margin-top: -46px;
+  position: relative;
+  z-index: 1;
+
 }
 .hero-avatar {
+  margin-top: -22px;
   width: 84px;
   height: 84px;
   border-radius: 50%;

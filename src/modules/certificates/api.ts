@@ -3,6 +3,8 @@ import { apiRequest, getApiBaseUrl } from '../../shared/api/http'
 import { mockFlags } from '../../shared/api/mockFlags'
 import type { CertificatesListMeta, CertificatesListResponse, CertificateDetail, SignedDownload } from './types'
 
+const RECENT_PURCHASE_CERTIFICATES_KEY = 'recent_purchase_certificates'
+
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const totalItems = items.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -22,13 +24,45 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
   return { slice, meta }
 }
 
+function formatPaymentMethodLabel(value: string | null | undefined) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return 'SePay'
+  if (normalized === 'bank_transfer') return 'Chuyển khoản ngân hàng'
+  if (normalized === 'sepay') return 'SePay'
+  return normalized.toUpperCase()
+}
+
+function humanizePricingValue(value: unknown) {
+  if (value === null || typeof value === 'undefined' || value === '') return 'Chưa chọn'
+  if (typeof value === 'boolean') return value ? 'Có' : 'Không'
+  return String(value)
+}
+
+function readRecentPurchaseCertificates(): CertificateDetail[] {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(RECENT_PURCHASE_CERTIFICATES_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 function mockCertificates() {
   const now = new Date()
+  const recent = readRecentPurchaseCertificates()
+  if (recent.length) {
+    return recent
+  }
+
   return (mockProducts as any[]).slice(0, 6).map((p, idx) => {
     const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
     const createdAt = new Date(now.getTime() - idx * 86400000).toISOString()
     return {
       id,
+      orderId: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `order-${idx + 1}`,
+      orderNumber: `ORD-DEMO-${String(idx + 1).padStart(4, '0')}`,
       productId: p.id,
       productCode: p.isrc ? String(p.isrc) : `PROD-${String(p.id).slice(0, 6).padStart(6, '0')}`,
       productTitle: p.title,
@@ -36,7 +70,26 @@ function mockCertificates() {
       status: 'ACTIVE',
       validFrom: createdAt,
       validUntil: null,
-      createdAt
+      createdAt,
+      paymentMethodLabel: 'SePay',
+      buyerName: 'Buyer Demo',
+      assetType: 'Bản quyền số',
+      rightsSummary: ['Quyền sử dụng số cơ bản'],
+      pricingAttributesSummary: [],
+      contractVersion: '1.0',
+      licenseType: 'Giấy phép tác quyền số',
+      issuedAt: createdAt,
+      purchasedAssets: [
+        {
+          productId: p.id,
+          productTitle: p.title,
+          unitPrice: Number(p.price || 0),
+          quantity: 1,
+          lineTotalAmount: Number(p.price || 0),
+          selectedUsageRights: ['Quyền sử dụng số cơ bản'],
+          pricingAttributes: []
+        }
+      ]
     } satisfies CertificateDetail
   })
 }

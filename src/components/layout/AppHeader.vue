@@ -12,10 +12,14 @@ const router = useRouter()
 const cart = useCartStore()
 const auth = useAuthStore()
 
-const count = computed(() => cart.items.reduce((s, i) => s + i.qty, 0))
 const isAuthed = computed(() => auth.isAuthenticated)
 const isArtist = computed(() => canAccessArtistArea(auth.roles))
 const canBuy = computed(() => canAccessBuyerArea(auth.roles))
+const count = computed(() => (
+  isAuthed.value && canBuy.value
+    ? cart.items.reduce((sum, item) => sum + Number(item.qty || 0), 0)
+    : 0
+))
 const displayName = computed(() => {
   const fullName = auth.me?.user?.fullName || auth.currentUser?.fullName
   if (fullName && fullName.trim()) {
@@ -65,6 +69,7 @@ function toggleUserMenu(event) {
 }
 
 function logout() {
+  cart.clear()
   auth.logout()
   router.push({ name: 'home' })
 }

@@ -12,8 +12,8 @@ const cart = useCartStore()
 const router = useRouter()
 const auth = useAuthStore()
 
-const step = ref(1) // 1: review/buyer info, 2: contract, 3: payment
-const steps = ['Thông tin & xem lại', 'Ký hợp đồng tác quyền', 'Thanh toán']
+const step = ref(1) // 1: review/buyer info, 2: contract + redirect SePay
+const steps = ['Thông tin & xem lại', 'Ký hợp đồng tác quyền']
 
 const buyer = ref({
   fullName: '',
@@ -75,15 +75,12 @@ function clearSig() {
   hasSignature.value = false
 }
 
-const paymentMethod = ref('BANK_TRANSFER')
-const paymentMethods = [
-  { k: 'BANK_TRANSFER', label: 'SePay QR', desc: 'Tạo order rồi chuyển sang SePay để quét QR/chuyển khoản' }
-]
+const SEPAY_PAYMENT_METHOD = 'BANK_TRANSFER'
 
 const canNext = computed(() => {
   if (step.value === 1) return !!(buyer.value.fullName && buyer.value.email)
   if (step.value === 2) return hasSignature.value && agreed.value
-  return true
+  return false
 })
 
 const processing = ref(false)
@@ -91,6 +88,16 @@ const orderError = ref('')
 const orderErrorCode = ref('')
 const orderErrorRequestId = ref('')
 const lastCreatedOrderId = ref('')
+const selectedCartItems = computed(() => cart.selectedItems)
+
+function getCoverStyle(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return { background: 'var(--grad-brand)' }
+  if (raw.startsWith('http') || raw.startsWith('data:')) {
+    return { backgroundImage: `url(${raw})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+  }
+  return { background: raw }
+}
 
 function createIdempotencyKey() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -111,7 +118,7 @@ function buildCreateOrderPayload() {
     buyer: {
       fullName: buyer.value.fullName.trim()
     },
-    items: cart.items.map((item) => ({
+    items: selectedCartItems.value.map((item) => ({
       productId: item.productId,
       quantity: Number(item.qty || 1),
       selectedUsageRights: Array.isArray(item.selectedUsageRights) ? item.selectedUsageRights : [],
@@ -121,7 +128,7 @@ function buildCreateOrderPayload() {
     })),
     payment: {
       provider: 'SEPAY',
-      method: paymentMethod.value
+      method: SEPAY_PAYMENT_METHOD
     },
     clientContext: {
       source: 'web-checkout',
@@ -156,7 +163,7 @@ function submitSepayForm(payload) {
 }
 
 async function payWithSepay() {
-  if (!cart.items.length) {
+  if (!selectedCartItems.value.length) {
     router.replace('/cart')
     return
   }
@@ -183,7 +190,7 @@ async function payWithSepay() {
 
     const checkoutRes = await sepayCheckout({
       orderId,
-      paymentMethod: paymentMethod.value
+      paymentMethod: SEPAY_PAYMENT_METHOD
     })
 
     submitSepayForm(checkoutRes.data)
@@ -204,7 +211,7 @@ async function payWithSepay() {
 
 function next() {
   if (!canNext.value) return
-  if (step.value < 3) {
+  if (step.value < 2) {
     step.value++
     window.scrollTo({ top: 0, behavior: 'smooth' })
     return
@@ -223,6 +230,11 @@ onMounted(async () => {
   }
 
   if (!cart.items.length) {
+    router.replace('/cart')
+    return
+  }
+
+  if (!selectedCartItems.value.length) {
     router.replace('/cart')
     return
   }
@@ -261,7 +273,6 @@ onMounted(async () => {
             <!-- STEP 1: Buyer info & review -->
             <div v-if="step === 1" key="s1" class="panel">
               <h2>Thông tin bên mua tác quyền</h2>
-              <p class="panel-sub">Thông tin sẽ xuất hiện trên hợp đồng số.</p>
               <div class="form-grid">
                 <label class="ff"><span>Họ và tên *</span><input v-model="buyer.fullName" type="text" /></label>
                 <label class="ff"><span>Email *</span><input v-model="buyer.email" type="email" /></label>
@@ -273,8 +284,8 @@ onMounted(async () => {
 
               <h2 class="mt-32">Xem lại các tác quyền đã chọn</h2>
               <div class="review-list">
-                <div v-for="item in cart.items" :key="item.lineId" class="rv-item">
-                  <div class="rv-cov" :style="{ background: item.cover }"></div>
+                <div v-for="item in selectedCartItems" :key="item.lineId" class="rv-item">
+                  <div class="rv-cov" :style="getCoverStyle(item.cover)"></div>
                   <div class="rv-body">
                     <strong>{{ item.title }}</strong>
                     <span>{{ item.artist }}</span>
@@ -288,9 +299,9 @@ onMounted(async () => {
             </div>
 
             <!-- STEP 2: Contract signing -->
-            <div v-else-if="step === 2" key="s2" class="panel">
+            <div v-else key="s2" class="panel">
               <h2>Hợp đồng mua tác quyền tác phẩm âm nhạc</h2>
-              <p class="panel-sub">Số hợp đồng: <b>MUSA-{{ Date.now().toString(36).toUpperCase().slice(-8) }}</b> · Ký xác thực điện tử theo Luật GDĐT 2023.</p>
+              <p class="panel-sub">Số hợp đồng: <b>MUSA-{{ Date.now().toString(36).toUpperCase().slice(-8) }}</b></p>
 
               <div class="contract">
                 <div class="ct-head">
@@ -311,7 +322,7 @@ onMounted(async () => {
                   <table class="ct-table">
                     <thead><tr><th>Tác phẩm</th><th>Tác giả</th><th>Cấu hình</th><th>Phí (₫)</th></tr></thead>
                     <tbody>
-                      <tr v-for="i in cart.items" :key="i.lineId">
+                      <tr v-for="i in selectedCartItems" :key="i.lineId">
                         <td>{{ i.title }}</td>
                         <td>{{ i.artist }}</td>
                         <td><span v-for="(v, k) in i.configuration" :key="k" class="td-kv">{{ k }}: <b>{{ v }}</b></span></td>
@@ -352,38 +363,6 @@ onMounted(async () => {
                   </div>
                 </div>
               </div>
-            </div>
-
-            <!-- STEP 3: Payment -->
-            <div v-else key="s3" class="panel">
-              <h2>Phương thức thanh toán</h2>
-              <p class="panel-sub">Hệ thống sẽ tạo order rồi chuyển sang SePay để bạn thanh toán thật.</p>
-
-              <div class="pay-methods">
-                <button v-for="m in paymentMethods" :key="m.k"
-                        :class="['pm', { active: paymentMethod === m.k }]"
-                        @click="paymentMethod = m.k">
-                  <div class="pm-bullet"></div>
-                  <div class="pm-body">
-                    <strong>{{ m.label }}</strong>
-                    <span>{{ m.desc }}</span>
-                  </div>
-                  <div class="pm-logo">{{ m.label[0] }}</div>
-                </button>
-              </div>
-
-              <div class="bank-pay">
-                <h4>Thanh toán thật qua SePay</h4>
-                <div class="bank-info">
-                  <div><span>Cổng thanh toán</span><b>SePay</b></div>
-                  <div><span>Kiểu giao dịch</span><b>QR chuyển khoản</b></div>
-                  <div><span>Xác nhận thanh toán</span><b>IPN/Webhook</b></div>
-                  <div><span>Kết quả người dùng</span><b>Redirect + polling order</b></div>
-                </div>
-                <p v-if="lastCreatedOrderId" class="sepay-last">
-                  Order gần nhất: <b>{{ lastCreatedOrderId }}</b>
-                </p>
-              </div>
 
               <div v-if="orderError" class="order-error">
                 <div class="oe-title">Không thể khởi tạo thanh toán</div>
@@ -397,7 +376,7 @@ onMounted(async () => {
           <div class="step-actions">
             <button v-if="step > 1" class="btn btn-ghost" @click="back">← Quay lại</button>
             <button :class="['btn btn-primary btn-lg', { 'is-loading': processing }]" :disabled="!canNext || processing" @click="next">
-              <span v-if="!processing">{{ step === 3 ? `Thanh toán ${formatVND(cart.total)}` : 'Tiếp tục →' }}</span>
+              <span v-if="!processing">{{ step === 2 ? `Xác nhận và thanh toán ${formatVND(cart.selectedTotal)}` : 'Tiếp tục →' }}</span>
               <span v-else class="spinner"></span>
             </button>
           </div>
@@ -408,8 +387,8 @@ onMounted(async () => {
           <div class="side-card">
             <h3>Tóm tắt đơn</h3>
             <div class="side-items">
-              <div v-for="i in cart.items" :key="i.lineId" class="side-item">
-                <div class="si-cov" :style="{ background: i.cover }"></div>
+              <div v-for="i in selectedCartItems" :key="i.lineId" class="side-item">
+                <div class="si-cov" :style="getCoverStyle(i.cover)"></div>
                 <div>
                   <strong>{{ i.title }}</strong>
                   <span>{{ i.artist }}</span>
@@ -418,15 +397,9 @@ onMounted(async () => {
               </div>
             </div>
             <hr />
-            <div class="sum-row"><span>Tạm tính</span><b>{{ formatVND(cart.subtotal) }}</b></div>
-            <div class="sum-row"><span>Phí xử lý</span><b>{{ formatVND(cart.fee) }}</b></div>
-            <div class="sum-total"><span>Tổng cộng</span><strong class="gradient-text">{{ formatVND(cart.total) }}</strong></div>
-
-            <div class="trust-mini">
-              <div>🔒 Mã hoá TLS 1.3</div>
-              <div>📜 Hợp đồng số có hiệu lực pháp lý</div>
-              <div>↩ Hỗ trợ hoàn tiền khi tranh chấp</div>
-            </div>
+            <div class="sum-row"><span>Tạm tính</span><b>{{ formatVND(cart.selectedSubtotal) }}</b></div>
+            <div class="sum-row"><span>Phí xử lý</span><b>{{ formatVND(cart.selectedFee) }}</b></div>
+            <div class="sum-total"><span>Tổng cộng</span><strong class="gradient-text">{{ formatVND(cart.selectedTotal) }}</strong></div>
           </div>
         </aside>
       </div>
@@ -581,53 +554,6 @@ onMounted(async () => {
 .sig-clear { position: absolute; top: 8px; right: 8px; background: #fff; border: 1px solid var(--c-border); padding: 4px 10px; border-radius: var(--radius-full); font-size: 11.5px; color: var(--c-text-soft); }
 
 /* Payment */
-.pay-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
-.pm {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px;
-  background: #fff;
-  border: 1.5px solid var(--c-border);
-  border-radius: var(--radius-md);
-  text-align: left;
-  transition: border-color .25s, background .25s;
-}
-.pm:hover { border-color: var(--c-blue-300); }
-.pm.active { border-color: var(--c-teal-500); background: linear-gradient(180deg, #f3fdfa, #fff); }
-.pm-bullet {
-  width: 16px; height: 16px; border-radius: 50%;
-  border: 2px solid var(--c-border-strong);
-  position: relative;
-  flex-shrink: 0;
-  transition: border-color .25s;
-}
-.pm.active .pm-bullet { border-color: var(--c-teal-500); }
-.pm.active .pm-bullet::after { content: ''; position: absolute; inset: 2px; background: var(--c-teal-500); border-radius: 50%; }
-.pm-body { flex: 1; }
-.pm-body strong { display: block; font-size: 14px; }
-.pm-body span { display: block; font-size: 12px; color: var(--c-text-mute); margin-top: 2px; }
-.pm-logo {
-  width: 36px; height: 36px;
-  border-radius: 8px;
-  background: var(--grad-brand);
-  color: #fff;
-  font-weight: 800;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-
-.card-form h4, .qr-info h4, .bank-pay h4 { margin: 0 0 12px; font-size: 14px; color: var(--c-text-soft); text-transform: uppercase; letter-spacing: 0.06em; }
-.qr-pay { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: center; padding: 20px; background: var(--c-bg-soft); border-radius: var(--radius-md); }
-.qr-box { width: 200px; height: 200px; padding: 14px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--c-border); box-shadow: var(--shadow-sm); }
-.qr-grid { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(12, 1fr); grid-auto-rows: 1fr; gap: 1px; }
-.qr-info ul { padding-left: 18px; margin: 8px 0 0; color: var(--c-text-soft); font-size: 13px; }
-.qr-info p { color: var(--c-text-soft); margin: 0; }
-
-.bank-pay { padding: 6px; }
-.bank-info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 18px; background: var(--c-bg-soft); border-radius: var(--radius-md); }
-.bank-info > div { background: #fff; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--c-border); }
-.bank-info span { display: block; font-size: 11.5px; color: var(--c-text-mute); text-transform: uppercase; letter-spacing: 0.06em; }
-.bank-info b { font-size: 14px; }
-.bank-info b.hl { color: var(--c-teal-600); font-variant-numeric: tabular-nums; }
-.sepay-last { margin: 14px 4px 0; color: var(--c-text-soft); font-size: 13px; }
 .order-error {
   margin-top: 16px;
   padding: 12px 14px;
@@ -683,8 +609,6 @@ onMounted(async () => {
 .sum-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--c-border); }
 .sum-total span { color: var(--c-text-soft); font-weight: 600; }
 .sum-total strong { font-size: 22px; font-weight: 800; }
-.trust-mini { margin-top: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--c-text-mute); }
-
 .swap-enter-active, .swap-leave-active { transition: opacity .3s, transform .3s; }
 .swap-enter-from { opacity: 0; transform: translateY(8px); }
 .swap-leave-to { opacity: 0; transform: translateY(-8px); }
@@ -692,8 +616,5 @@ onMounted(async () => {
 @media (max-width: 640px) {
   .form-grid { grid-template-columns: 1fr; }
   .ct-head { grid-template-columns: 1fr; }
-  .pay-methods { grid-template-columns: 1fr; }
-  .qr-pay { grid-template-columns: 1fr; }
-  .bank-info { grid-template-columns: 1fr; }
 }
 </style>

@@ -5,21 +5,21 @@ import { formatVND } from '../data/catalog'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '../modules/auth/auth.store'
 import { hasClientPermission } from '../modules/auth/auth.capabilities'
-import AddProductToCartModal from '../components/cart/AddProductToCartModal.vue'
 import EditCartItemModal from '../components/cart/EditCartItemModal.vue'
 import ConfirmModal from '../shared/ui/modals/ConfirmModal.vue'
 
 const cart = useCartStore()
 const router = useRouter()
 const auth = useAuthStore()
-const addModalOpen = ref(false)
 const editModalOpen = ref(false)
 const duplicateModalOpen = ref(false)
 const editingLineId = ref('')
 const editingItem = computed(() => cart.items.find((i) => i.lineId === editingLineId.value) || null)
+const allSelected = computed(() => cart.allSelected)
+const selectedCount = computed(() => cart.selectedCount)
 
 function goCheckout() {
-  if (!cart.items.length) return
+  if (!cart.hasSelection) return
   auth.hydrate()
   if (!auth.isAuthenticated) {
     router.push({ name: 'login', query: { redirect: '/checkout' } })
@@ -35,10 +35,6 @@ function goCheckout() {
     return
   }
   router.push('/checkout')
-}
-
-function openAddModal() {
-  addModalOpen.value = true
 }
 
 function openEdit(item) {
@@ -73,21 +69,25 @@ function getCoverStyle(value) {
   }
   return { background: raw }
 }
+
+function toggleSelection(lineId) {
+  cart.toggleSelection(lineId)
+}
+
+function toggleAll() {
+  if (cart.allSelected) {
+    cart.clearSelection()
+    return
+  }
+  cart.selectAll()
+}
 </script>
 
 <template>
   <section class="cart-page">
     <div class="container">
       <div class="page-head">
-        <div>
-          <span class="eyebrow">Giỏ tác quyền</span>
-          <h1>Giỏ hàng của bạn</h1>
-          <p>Xem lại các gói tác quyền bạn đã cấu hình trước khi ký hợp đồng.</p>
-        </div>
-        <div class="head-actions">
-          <button class="icon-plus" type="button" aria-label="Thêm sản phẩm" @click="openAddModal">+</button>
-          <RouterLink to="/" class="btn btn-ghost">← Tiếp tục mua sắm</RouterLink>
-        </div>
+        <span class="eyebrow">Giỏ tác quyền</span>
       </div>
 
       <div v-if="!cart.items.length" class="empty-cart">
@@ -99,22 +99,38 @@ function getCoverStyle(value) {
 
       <div v-else class="cart-grid">
         <div class="lines">
+          <div class="lines-toolbar">
+            <label class="select-all">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                @change="toggleAll"
+              />
+              <span>Chọn tất cả ({{ cart.count }} mục)</span>
+            </label>
+            <button v-if="selectedCount" class="toolbar-link" type="button" @click="cart.clearSelection()">Bỏ chọn</button>
+          </div>
+
+          <div class="lines-head">
+            <span></span>
+            <span>Sản phẩm</span>
+            <span>Đơn giá</span>
+            <span></span>
+          </div>
+
           <transition-group name="line">
-            <div v-for="item in cart.items" :key="item.lineId" class="line-row">
+            <div v-for="item in cart.items" :key="item.lineId" class="line-row" :class="{ selected: cart.selectedLineIds.includes(item.lineId) }">
+              <label class="line-check" :for="`line-${item.lineId}`">
+                <input
+                  :id="`line-${item.lineId}`"
+                  type="checkbox"
+                  :checked="cart.selectedLineIds.includes(item.lineId)"
+                  @change="toggleSelection(item.lineId)"
+                />
+              </label>
               <div class="cover" :style="getCoverStyle(item.cover)" aria-hidden="true"></div>
               <div class="info">
-                <div class="line-head">
-                  <h3>{{ item.title }}</h3>
-                  <div class="line-actions">
-                    <button class="edit" type="button" aria-label="Sửa" @click="openEdit(item)">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 20h9"/>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-                      </svg>
-                    </button>
-                    <button class="remove" type="button" @click="cart.remove(item.lineId)" aria-label="Xoá">✕</button>
-                  </div>
-                </div>
+                <h3>{{ item.title }}</h3>
                 <p class="artist">{{ item.artist }}</p>
                 <div class="config">
                   <span v-for="(v, k) in item.configuration" :key="k" class="kv">
@@ -123,30 +139,44 @@ function getCoverStyle(value) {
                 </div>
               </div>
               <div class="line-price">
-                <span>Tác quyền</span>
+                <span>Đơn giá</span>
                 <strong>{{ formatVND(item.price) }}</strong>
+              </div>
+              <div class="line-actions">
+                <button class="icon-action" type="button" aria-label="Sửa" @click="openEdit(item)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                  </svg>
+                </button>
+                <button class="icon-action remove" type="button" @click="cart.remove(item.lineId)" aria-label="Xoá">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/>
+                    <path d="M8 6V4h8v2"/>
+                    <path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6"/>
+                    <path d="M14 11v6"/>
+                  </svg>
+                </button>
               </div>
             </div>
           </transition-group>
         </div>
 
         <aside class="summary">
-          <h3>Tóm tắt đơn</h3>
-          <div class="sum-row"><span>Tạm tính ({{ cart.count }} gói)</span><b>{{ formatVND(cart.subtotal) }}</b></div>
-          <div class="sum-row"><span>Phí xử lý & xác minh (4%)</span><b>{{ formatVND(cart.fee) }}</b></div>
-          <div class="sum-row promo"><span>Mã giảm giá</span><a href="#">Áp dụng</a></div>
+          <div class="summary-head">
+            <div>
+              <h3>Xác nhận đơn hàng</h3>
+            </div>
+            <span class="summary-badge">{{ selectedCount }} mục</span>
+          </div>
+          <div class="sum-row"><span>Tạm tính</span><b>{{ formatVND(cart.selectedSubtotal) }}</b></div>
+          <div class="sum-row"><span>Phí xử lý (4%)</span><b>{{ formatVND(cart.selectedFee) }}</b></div>
           <hr />
-          <div class="sum-total"><span>Tổng cộng</span><strong class="gradient-text">{{ formatVND(cart.total) }}</strong></div>
-          <button class="btn btn-primary btn-lg full" @click="goCheckout">Tiến hành ký hợp đồng →</button>
-          <ul class="reassure">
-            <li>✓ Hợp đồng số có hiệu lực pháp lý</li>
-            <li>✓ Nhận đầy đủ bộ tài sản tác quyền tức thì</li>
-            <li>✓ Hỗ trợ giải quyết tranh chấp 24/7</li>
-          </ul>
+          <div class="sum-total"><span>Tổng cộng</span><strong class="gradient-text">{{ formatVND(cart.selectedTotal) }}</strong></div>
+          <button class="btn btn-primary btn-lg full" :disabled="!cart.hasSelection" @click="goCheckout">Tiếp tục thanh toán</button>
         </aside>
       </div>
-
-      <AddProductToCartModal :open="addModalOpen" @close="addModalOpen = false" />
 
       <EditCartItemModal
         :open="editModalOpen"
@@ -169,23 +199,20 @@ function getCoverStyle(value) {
 </template>
 
 <style scoped>
-.cart-page { padding: 40px 0 80px; }
-.page-head { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 32px; }
-.page-head h1 { margin: 12px 0 6px; font-size: clamp(26px, 3.4vw, 38px); letter-spacing: -0.02em; }
-.page-head p { margin: 0; color: var(--c-text-soft); }
-.head-actions { display: flex; align-items: center; gap: 10px; }
-.icon-plus {
-  width: 38px; height: 38px;
-  border-radius: 999px;
-  border: 1px solid var(--c-border);
-  background: #fff;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--c-blue-700);
-  display: grid;
-  place-items: center;
+.cart-page { padding: 20px 0 48px; }
+.page-head { margin-bottom: 14px; }
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-.icon-plus:hover { background: var(--c-bg-soft); border-color: var(--c-border-strong); }
 
 .empty-cart {
   background: #fff;
@@ -200,60 +227,128 @@ function getCoverStyle(value) {
 
 .cart-grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 30px;
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 380px);
+  gap: 22px;
   align-items: start;
 }
 @media (max-width: 920px) { .cart-grid { grid-template-columns: 1fr; } }
 
 .lines { display: flex; flex-direction: column; gap: 14px; }
+.lines-toolbar,
+.lines-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+}
+.lines-toolbar {
+  margin-bottom: 2px;
+}
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.select-all input,
+.line-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-teal-500);
+}
+.toolbar-link {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--c-blue-700);
+  font-size: 13px;
+  font-weight: 700;
+}
+.lines-head {
+  padding: 0 14px 4px;
+  color: var(--c-text-mute);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.lines-head span:nth-child(3),
+.lines-head span:nth-child(4) {
+  justify-self: end;
+}
 .line-row {
   display: grid;
-  grid-template-columns: 80px 1fr auto;
-  gap: 18px;
+  grid-template-columns: auto 68px minmax(0, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
   background: #fff;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
   transition: box-shadow .25s, border-color .25s, transform .25s;
 }
 .line-row:hover { box-shadow: var(--shadow-sm); border-color: var(--c-border-strong); }
+.line-row.selected {
+  border-color: rgba(20, 184, 166, 0.3);
+  box-shadow: 0 10px 24px rgba(20, 184, 166, 0.08);
+}
+.line-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .cover {
-  width: 80px; height: 80px;
-  border-radius: var(--radius-md);
+  width: 68px; height: 68px;
+  border-radius: 12px;
   box-shadow: var(--shadow-xs);
 }
 .info { min-width: 0; }
-.line-head { display: flex; justify-content: space-between; gap: 8px; }
-.line-head h3 { margin: 0; font-size: 16px; }
-.line-actions { display: flex; align-items: center; gap: 8px; }
-.edit {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--c-bg-soft); border: 1px solid var(--c-border);
-  color: var(--c-text-soft);
-}
-.edit:hover { background: #eef6ff; color: var(--c-blue-700); border-color: #cfe1ff; }
-.remove {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--c-bg-soft); border: 1px solid var(--c-border);
-  color: var(--c-text-soft);
-  transition: background .2s, color .2s;
-}
-.remove:hover { background: #fff0f0; color: #c0392b; border-color: #ffd5d5; }
-.artist { margin: 2px 0 10px; color: var(--c-text-soft); font-size: 13.5px; }
+.info h3 { margin: 0; font-size: 15px; }
+.artist { margin: 2px 0 8px; color: var(--c-text-soft); font-size: 13px; }
 .config { display: flex; flex-wrap: wrap; gap: 6px; }
 .kv {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 5px 10px;
-  background: var(--c-blue-50);
+  padding: 4px 8px;
+  background: var(--c-bg-soft);
   border-radius: var(--radius-full);
-  font-size: 11.5px;
+  font-size: 11px;
 }
 .kv i { color: var(--c-text-mute); font-style: normal; font-weight: 500; }
 .kv b { color: var(--c-blue-700); font-weight: 700; }
 
-.line-price { text-align: right; }
+.line-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+}
+.icon-action {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--c-border);
+  background: #fff;
+  color: var(--c-text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-action:hover {
+  color: var(--c-blue-700);
+  border-color: var(--c-blue-300);
+  background: #f8fbff;
+}
+.icon-action.remove:hover {
+  color: #c0392b;
+  border-color: #ffd5d5;
+  background: #fff5f5;
+}
+.line-price {
+  min-width: 110px;
+  text-align: right;
+}
 .line-price span { display: block; font-size: 11px; color: var(--c-text-mute); text-transform: uppercase; letter-spacing: 0.06em; }
 .line-price strong { font-size: 16px; color: var(--c-blue-700); font-variant-numeric: tabular-nums; }
 
@@ -262,31 +357,74 @@ function getCoverStyle(value) {
   top: 100px;
   background: #fff;
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-xl);
-  padding: 24px;
+  border-radius: var(--radius-lg);
+  padding: 20px;
   box-shadow: var(--shadow-md);
 }
-.summary h3 { margin: 0 0 18px; font-size: 17px; }
+.summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+.summary h3 { margin: 0; font-size: 20px; }
+.summary-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  font-size: 12px;
+  font-weight: 800;
+}
 .sum-row {
   display: flex; justify-content: space-between;
-  font-size: 14px; padding: 8px 0;
+  font-size: 14px; padding: 7px 0;
   color: var(--c-text-soft);
 }
 .sum-row b { color: var(--c-text); font-variant-numeric: tabular-nums; }
-.sum-row.promo a { color: var(--c-blue-700); font-weight: 600; }
 .summary hr { margin: 12px 0; border: none; border-top: 1px dashed var(--c-border); }
 .sum-total {
   display: flex; justify-content: space-between; align-items: baseline;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 .sum-total span { color: var(--c-text-soft); font-weight: 600; }
-.sum-total strong { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+.sum-total strong { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .full { width: 100%; }
-
-.reassure { list-style: none; padding: 16px 0 0; margin: 16px 0 0; border-top: 1px dashed var(--c-border); }
-.reassure li { font-size: 12.5px; color: var(--c-text-soft); padding: 4px 0; }
 
 .line-enter-active, .line-leave-active { transition: opacity .3s, transform .3s; }
 .line-enter-from { opacity: 0; transform: translateY(-6px); }
 .line-leave-to { opacity: 0; transform: translateX(10px); }
+
+@media (max-width: 640px) {
+  .cart-page { padding-top: 12px; }
+  .page-head { margin-bottom: 14px; }
+  .lines-toolbar,
+  .lines-head {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .lines-head {
+    display: none;
+  }
+  .toolbar-link {
+    margin-left: 0;
+    justify-self: start;
+  }
+  .line-row { grid-template-columns: auto 56px minmax(0, 1fr); }
+  .cover { width: 56px; height: 56px; }
+  .line-price,
+  .line-actions {
+    grid-column: 3;
+  }
+  .line-actions {
+    justify-self: start;
+  }
+  .line-price { text-align: left; }
+}
 </style>

@@ -163,14 +163,15 @@ function submitSepayForm(payload) {
 }
 
 async function payWithSepay() {
-  if (!selectedCartItems.value.length) {
-    router.replace('/cart')
-    return
-  }
-
   auth.hydrate()
+  await cart.syncAuthState()
+
   if (!auth.isAuthenticated) {
     router.replace({ name: 'login', query: { redirect: '/checkout' } })
+    return
+  }
+  if (!selectedCartItems.value.length) {
+    router.replace('/cart')
     return
   }
   if (!canManageOrder()) {
@@ -222,6 +223,7 @@ function back() { if (step.value > 1) step.value-- }
 
 onMounted(async () => {
   auth.hydrate()
+  await cart.syncAuthState()
   if (auth.accessToken && !auth.me) {
     try {
       await auth.hydrateMe()

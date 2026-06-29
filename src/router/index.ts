@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { prefetchProduct } from '../modules/catalog/productPrefetch'
 
@@ -57,7 +58,7 @@ export const routes = [
     path: '/me/products/:productId/:section?', 
     name: 'my-product-detail', 
     component: () => import('../pages/me-products/detail.page.vue'),
-    props: (route) => ({
+    props: (route: RouteLocationNormalizedLoaded) => ({
       productId: String(route.params.productId || ''),
       section: String(route.params.section || ''),
     }),

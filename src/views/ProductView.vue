@@ -474,10 +474,10 @@ function ensureManageOrderPermission() {
   return true
 }
 
-function addToCart() {
+async function addToCart() {
   if (!product.value || !calcData.value) return false
   if (!ensureManageOrderPermission()) return false
-  const result = cart.add({
+  const result = await cart.add({
     productId: product.value.id,
     title: product.value.title,
     artist: productAuthorName.value,
@@ -496,8 +496,9 @@ function addToCart() {
   return true
 }
 
-function buyNow() {
-  if (!addToCart()) return
+async function buyNow() {
+  const added = await addToCart()
+  if (!added) return
   setTimeout(() => router.push('/cart'), 200)
 }
 

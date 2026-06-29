@@ -60,7 +60,7 @@ export const createApp = ViteSSG(
       } catch {
       }
       auth.hydrate()
-      cart.syncAuthState()
+      void cart.syncAuthState()
       if (auth.accessToken) {
         auth.hydrateMe().catch((error) => {
           if (error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403)) {
@@ -72,7 +72,7 @@ export const createApp = ViteSSG(
       watch(
         () => auth.accessToken,
         () => {
-          cart.syncAuthState()
+          void cart.syncAuthState()
         }
       )
     }

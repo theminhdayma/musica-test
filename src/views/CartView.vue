@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useCartStore } from '../stores/cart'
 import { formatVND } from '../data/catalog'
 import { useRouter, RouterLink } from 'vue-router'
@@ -17,6 +17,11 @@ const editingLineId = ref('')
 const editingItem = computed(() => cart.items.find((i) => i.lineId === editingLineId.value) || null)
 const allSelected = computed(() => cart.allSelected)
 const selectedCount = computed(() => cart.selectedCount)
+
+onMounted(() => {
+  auth.hydrate()
+  void cart.syncAuthState()
+})
 
 function goCheckout() {
   if (!cart.hasSelection) return
@@ -43,9 +48,9 @@ function openEdit(item) {
   editModalOpen.value = true
 }
 
-function onSaveEdit(patch) {
+async function onSaveEdit(patch) {
   if (!editingLineId.value) return
-  const result = cart.update(editingLineId.value, patch)
+  const result = await cart.update(editingLineId.value, patch)
   if (!result?.ok) {
     if (result?.reason === 'duplicate') {
       duplicateModalOpen.value = true
@@ -54,6 +59,10 @@ function onSaveEdit(patch) {
   }
   editModalOpen.value = false
   editingLineId.value = ''
+}
+
+async function removeItem(lineId) {
+  await cart.remove(lineId)
 }
 
 function closeEdit() {
@@ -90,7 +99,13 @@ function toggleAll() {
         <span class="eyebrow">Giỏ tác quyền</span>
       </div>
 
-      <div v-if="!cart.items.length" class="empty-cart">
+      <div v-if="cart.loading && !cart.hydrated" class="empty-cart">
+        <div class="empty-illu">...</div>
+        <h3>Đang đồng bộ giỏ hàng</h3>
+        <p>Hệ thống đang tải lại các tác quyền bạn đã lưu trên tài khoản.</p>
+      </div>
+
+      <div v-else-if="!cart.items.length" class="empty-cart">
         <div class="empty-illu">🎼</div>
         <h3>Giỏ hàng đang trống</h3>
         <p>Hãy bắt đầu khám phá thư viện tác quyền để thêm gói đầu tiên.</p>
@@ -149,7 +164,7 @@ function toggleAll() {
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
                   </svg>
                 </button>
-                <button class="icon-action remove" type="button" @click="cart.remove(item.lineId)" aria-label="Xoá">
+                <button class="icon-action remove" type="button" @click="void removeItem(item.lineId)" aria-label="Xoá">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 6h18"/>
                     <path d="M8 6V4h8v2"/>

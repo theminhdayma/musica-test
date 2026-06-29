@@ -54,6 +54,45 @@ function mapPricingAttributes(value) {
   }))
 }
 
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(
+    value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  )].sort()
+}
+
+function normalizePricingAttributes(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, itemValue]) => [String(key), itemValue == null ? '' : String(itemValue)])
+      .sort(([left], [right]) => left.localeCompare(right))
+  )
+}
+
+function buildCartMatchSignature(item) {
+  return JSON.stringify({
+    productId: String(item?.productId || ''),
+    selectedUsageRights: normalizeStringArray(item?.selectedUsageRights || item?.selectedUsageRightsSnapshot),
+    pricingAttributes: normalizePricingAttributes(item?.pricingAttributes || item?.pricingAttributesSnapshot),
+  })
+}
+
+async function removePurchasedCartItems(data) {
+  await cart.syncAuthState()
+  const purchasedSignatures = new Set(
+    (Array.isArray(data?.items) ? data.items : []).map((item) => buildCartMatchSignature(item))
+  )
+  const removableIds = cart.items
+    .filter((item) => purchasedSignatures.has(buildCartMatchSignature(item)))
+    .map((item) => item.lineId)
+
+  if (!removableIds.length) return
+  await cart.removeMany(removableIds)
+}
+
 function buildCertificateDemoPayload(data) {
   const paymentMethod = data?.payment?.provider || 'SePay'
   const issuedAt = data?.paidAt || data?.createdAt || new Date().toISOString()
@@ -151,7 +190,10 @@ async function loadOrderStatus() {
     paid.value = data.status === 'PAID'
 
     if (paid.value) {
-      cart.clear()
+      try {
+        await removePurchasedCartItems(data)
+      } catch {
+      }
       persistRecentCertificates(data)
       if (shouldOpenSuccessModal(data.id)) {
         showSuccessModal.value = true

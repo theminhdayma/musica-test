@@ -69,8 +69,8 @@ function toggleUserMenu(event) {
 }
 
 function logout() {
-  cart.clear()
   auth.logout()
+  void cart.syncAuthState()
   router.push({ name: 'home' })
 }
 

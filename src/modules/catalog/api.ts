@@ -10,6 +10,7 @@ import type {
   SignedUrl,
 } from "./types";
 import { apiRequest, getApiBaseUrl } from "../../shared/api/http";
+import { ApiError } from "../../shared/api/errors";
 import { mockFlags } from "../../shared/api/mockFlags";
 import { toInternalProductId, toPublicProductId } from "./idMap";
 

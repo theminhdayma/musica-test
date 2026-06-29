@@ -1,13 +1,24 @@
 import { defineStore } from 'pinia'
+import { ApiError } from '../shared/api/errors'
+import {
+  addCartItem,
+  getMyCart,
+  removeCartItem,
+  removeManyCartItems,
+  updateCartItem,
+} from '../modules/cart/api'
 
 const LEGACY_CART_STORAGE_KEY = 'musica.cart.items'
 const LEGACY_CART_SELECTION_KEY = 'musica.cart.selection'
 const AUTH_STORAGE_KEY = 'musica_auth_v2'
+let syncPromise = null
 
 export const useCartStore = defineStore('cart', {
   state: () => ({
     items: loadCartItems(),
-    selectedLineIds: loadSelectedLineIds()
+    selectedLineIds: loadSelectedLineIds(),
+    loading: false,
+    hydrated: false,
   }),
   getters: {
     subtotal: (s) => s.items.reduce((sum, it) => sum + it.price * it.qty, 0),
@@ -40,58 +51,86 @@ export const useCartStore = defineStore('cart', {
     }
   },
   actions: {
-    syncAuthState() {
-      this.items = loadCartItems()
-      this.selectedLineIds = normalizeSelectedLineIds(loadSelectedLineIds(), this.items)
-      persistSelectedLineIds(this.selectedLineIds)
-    },
-    add(item) {
-      const normalizedItem = normalizeCartItem({
-        ...item,
-        qty: 1,
-        lineId: cryptoRandomId()
-      })
-      const signature = getCartItemSignature(normalizedItem)
-      const hasDuplicate = this.items.some((existing) => (
-        getCartItemSignature(existing) === signature
-      ))
-
-      if (hasDuplicate) {
-        return { ok: false, reason: 'duplicate' }
+    async syncAuthState() {
+      const persistedAuth = readPersistedAuth()
+      if (!persistedAuth?.accessToken || !persistedAuth?.currentUser?.id) {
+        this.items = []
+        this.selectedLineIds = []
+        this.loading = false
+        this.hydrated = true
+        persistSelectedLineIds(this.selectedLineIds)
+        return
       }
 
-      this.items.push(normalizedItem)
-      persistCartItems(this.items)
-      this.selectedLineIds = normalizeSelectedLineIds(
-        [...this.selectedLineIds, normalizedItem.lineId],
-        this.items
-      )
-      persistSelectedLineIds(this.selectedLineIds)
-      return { ok: true }
+      if (syncPromise) return syncPromise
+
+      syncPromise = (async () => {
+        this.loading = true
+        try {
+          const res = await getMyCart()
+          this.items = normalizeServerCartItems(res.data?.items || [])
+          persistCartItems(this.items)
+        } catch {
+          this.items = loadCartItems()
+        } finally {
+          this.selectedLineIds = normalizeSelectedLineIds(loadSelectedLineIds(), this.items)
+          persistSelectedLineIds(this.selectedLineIds)
+          this.loading = false
+          this.hydrated = true
+          syncPromise = null
+        }
+      })()
+
+      return syncPromise
     },
-    update(lineId, patch) {
+    async add(item) {
+      try {
+        const res = await addCartItem(toCartPayload(item))
+        const normalizedItem = normalizeServerCartItem(res.data)
+        const existingIndex = this.items.findIndex((entry) => entry.lineId === normalizedItem.lineId)
+        if (existingIndex >= 0) {
+          this.items.splice(existingIndex, 1, normalizedItem)
+        } else {
+          this.items.unshift(normalizedItem)
+        }
+        persistCartItems(this.items)
+        this.selectedLineIds = normalizeSelectedLineIds(
+          [...this.selectedLineIds, normalizedItem.lineId],
+          this.items
+        )
+        persistSelectedLineIds(this.selectedLineIds)
+        return { ok: true }
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'CART_ITEM_ALREADY_EXISTS') {
+          return { ok: false, reason: 'duplicate' }
+        }
+        throw error
+      }
+    },
+    async update(lineId, patch) {
       const index = this.items.findIndex((item) => item.lineId === lineId)
       if (index < 0) return { ok: false, reason: 'not_found' }
 
-      const nextItem = normalizeCartItem({
-        ...this.items[index],
-        ...patch,
-        qty: 1,
-        lineId
-      })
-      const signature = getCartItemSignature(nextItem)
-      const hasDuplicate = this.items.some((existing) => (
-        existing.lineId !== lineId && getCartItemSignature(existing) === signature
-      ))
-      if (hasDuplicate) return { ok: false, reason: 'duplicate' }
-
-      this.items.splice(index, 1, nextItem)
-      persistCartItems(this.items)
-      this.selectedLineIds = normalizeSelectedLineIds(this.selectedLineIds, this.items)
-      persistSelectedLineIds(this.selectedLineIds)
-      return { ok: true }
+      try {
+        const res = await updateCartItem(lineId, toCartPayload({
+          ...this.items[index],
+          ...patch,
+        }))
+        const nextItem = normalizeServerCartItem(res.data)
+        this.items.splice(index, 1, nextItem)
+        persistCartItems(this.items)
+        this.selectedLineIds = normalizeSelectedLineIds(this.selectedLineIds, this.items)
+        persistSelectedLineIds(this.selectedLineIds)
+        return { ok: true }
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'CART_ITEM_ALREADY_EXISTS') {
+          return { ok: false, reason: 'duplicate' }
+        }
+        throw error
+      }
     },
-    remove(lineId) {
+    async remove(lineId) {
+      await removeCartItem(lineId)
       this.items = this.items.filter(i => i.lineId !== lineId)
       this.selectedLineIds = normalizeSelectedLineIds(
         this.selectedLineIds.filter((id) => id !== lineId),
@@ -100,7 +139,27 @@ export const useCartStore = defineStore('cart', {
       persistCartItems(this.items)
       persistSelectedLineIds(this.selectedLineIds)
     },
-    clear() {
+    async removeMany(lineIds) {
+      const normalizedIds = [...new Set((lineIds || []).map((item) => String(item || '').trim()))]
+        .filter(Boolean)
+      if (!normalizedIds.length) return { ok: true, removedIds: [] }
+
+      const res = await removeManyCartItems(normalizedIds)
+      const removedSet = new Set(res.data?.removedIds || [])
+      this.items = this.items.filter((item) => !removedSet.has(item.lineId))
+      this.selectedLineIds = normalizeSelectedLineIds(
+        this.selectedLineIds.filter((id) => !removedSet.has(id)),
+        this.items
+      )
+      persistCartItems(this.items)
+      persistSelectedLineIds(this.selectedLineIds)
+      return { ok: true, removedIds: [...removedSet] }
+    },
+    async clear() {
+      if (this.items.length > 0) {
+        await this.removeMany(this.items.map((item) => item.lineId))
+        return
+      }
       this.items = []
       this.selectedLineIds = []
       persistCartItems(this.items)
@@ -125,11 +184,6 @@ export const useCartStore = defineStore('cart', {
     }
   }
 })
-
-function cryptoRandomId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
-  return Math.random().toString(36).slice(2) + Date.now().toString(36)
-}
 
 function loadCartItems() {
   if (typeof window === 'undefined') return []
@@ -273,6 +327,9 @@ function readPersistedAuth() {
 function normalizeCartItem(item) {
   return {
     ...item,
+    lineId: String(item?.lineId || item?.id || '').trim() || cryptoRandomId(),
+    qty: Number(item?.qty || 1),
+    price: Number(item?.price || 0),
     artist: normalizeArtistName(item),
     cover: normalizeCoverValue(item),
     configuration: item.configuration && typeof item.configuration === 'object' ? item.configuration : {},
@@ -332,4 +389,40 @@ function getCartItemSignature(item) {
     selectedUsageRights: normalizeStringArray(item?.selectedUsageRights),
     pricingAttributes: normalizePricingAttributes(item?.pricingAttributes),
   })
+}
+
+function normalizeServerCartItems(items) {
+  return (items || []).map((item) => normalizeServerCartItem(item))
+}
+
+function normalizeServerCartItem(item) {
+  return normalizeCartItem({
+    lineId: item?.id,
+    productId: item?.productId,
+    title: item?.title,
+    artist: item?.artist,
+    cover: item?.thumbnailUrl,
+    price: item?.price,
+    currency: item?.currency,
+    qty: item?.qty || 1,
+    configuration: item?.configuration,
+    selectedUsageRights: item?.selectedUsageRights,
+    pricingAttributes: item?.pricingAttributes,
+    platformName: item?.platformName,
+    createdAt: item?.createdAt,
+    updatedAt: item?.updatedAt,
+  })
+}
+
+function toCartPayload(item) {
+  return {
+    productId: String(item?.productId || '').trim(),
+    selectedUsageRights: normalizeStringArray(item?.selectedUsageRights),
+    pricingAttributes: normalizePricingAttributes(item?.pricingAttributes),
+  }
+}
+
+function cryptoRandomId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }

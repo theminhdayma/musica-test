@@ -2,7 +2,12 @@ import type { Router } from 'vue-router'
 import type { AuthRole } from '../modules/auth/types'
 import { useAuthStore } from '../modules/auth/auth.store'
 import { getDefaultAuthenticatedRoute } from '../modules/auth/auth.routing'
-import { canAccessArtistArea, canAccessBuyerArea } from '../modules/auth/auth.capabilities'
+import {
+  canAccessArtistArea,
+  canAccessBuyerArea,
+  hasClientPermission
+} from '../modules/auth/auth.capabilities'
+import { useTourDemoStore } from '../stores/tourDemo.store'
 
 type AuthStore = ReturnType<typeof useAuthStore>
 
@@ -22,6 +27,20 @@ function hasAnyRole(userRoles: AuthRole[], required?: unknown) {
   })
 }
 
+function hasRequiredPermissions(auth: AuthStore, required?: unknown) {
+  if (!required) return true
+  if (!Array.isArray(required)) return true
+
+  return required.every((permission) => (
+    typeof permission === 'string' && hasClientPermission({
+      isAuthenticated: auth.isAuthenticated,
+      roles: auth.roles,
+      currentUser: auth.currentUser,
+      me: auth.me
+    }, permission as never)
+  ))
+}
+
 export function installRouterGuards(input: { router: Router; auth: AuthStore }) {
   input.router.beforeEach((to) => {
     input.auth.hydrate()
@@ -32,14 +51,31 @@ export function installRouterGuards(input: { router: Router; auth: AuthStore }) 
 
     const requiresAuth = !!to.meta?.requiresAuth
     const requiredRoles = to.meta?.requiredRoles
+    const requiredPermissions = to.meta?.requiredPermissions
 
     if (!requiresAuth) return true
+
+    // Demo mode: guest có thể bypass auth guard cho tất cả route /me/*
+    const demo = useTourDemoStore()
+    if (demo.isDemo && !input.auth.isAuthenticated) {
+      const demoRoles = demo.guestDemoRoles as AuthRole[]
+      if (hasAnyRole(demoRoles, requiredRoles)) return true
+    }
+
     if (!input.auth.isAuthenticated) {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
     if (!hasAnyRole(input.auth.roles, requiredRoles)) {
       return { name: 'home' }
     }
+    if (!hasRequiredPermissions(input.auth, requiredPermissions)) {
+      return { name: 'home' }
+    }
     return true
+  })
+
+  input.router.afterEach(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, left: 0 })
   })
 }

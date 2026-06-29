@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,6 +16,26 @@ import {
 import { Line, Bar, Doughnut } from 'vue-chartjs'
 import MeAccountLayout from '../../components/features/me/MeAccountLayout.vue'
 import HintIcon from '../../shared/ui/HintIcon.vue'
+import { useAuthStore } from '../../modules/auth/auth.store'
+import { canAccessArtistArea } from '../../modules/auth/auth.capabilities'
+import { getMyOnboarding } from '../../modules/artist-onboarding/api'
+import { useArtistTour } from '../../composables/useArtistTour'
+
+const auth = useAuthStore()
+const { startTour } = useArtistTour()
+
+onMounted(async () => {
+  if (auth.isAuthenticated && canAccessArtistArea(auth.roles)) {
+    try {
+      const { data } = await getMyOnboarding()
+      if (data.status === 'NOT_STARTED') {
+        setTimeout(() => startTour(), 800)
+      }
+    } catch {
+      // Không block nếu API lỗi
+    }
+  }
+})
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,

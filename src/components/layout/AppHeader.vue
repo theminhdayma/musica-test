@@ -12,10 +12,14 @@ const router = useRouter()
 const cart = useCartStore()
 const auth = useAuthStore()
 
-const count = computed(() => cart.items.reduce((s, i) => s + i.qty, 0))
 const isAuthed = computed(() => auth.isAuthenticated)
 const isArtist = computed(() => canAccessArtistArea(auth.roles))
 const canBuy = computed(() => canAccessBuyerArea(auth.roles))
+const count = computed(() => (
+  isAuthed.value && canBuy.value
+    ? cart.items.reduce((sum, item) => sum + Number(item.qty || 0), 0)
+    : 0
+))
 const displayName = computed(() => {
   const fullName = auth.me?.user?.fullName || auth.currentUser?.fullName
   if (fullName && fullName.trim()) {
@@ -36,17 +40,16 @@ const userMenuItems = computed(() => {
     })
   } else if (canBuy.value) {
     items.push({
+      label: 'Trang cá nhân',
+      icon: 'pi pi-user',
+      command: () => void router.push({ path: '/me/profile' })
+    }, {
       label: 'Chứng nhận',
       icon: 'pi pi-check-circle',
       command: () => void router.push({ path: '/me/certificates' })
     })
   }
   items.push(
-    {
-      label: 'Trợ giúp',
-      icon: 'pi pi-question-circle',
-      command: () => void router.push({ name: 'help' })
-    },
     {
       label: 'Đăng xuất',
       icon: 'pi pi-sign-out',
@@ -62,6 +65,7 @@ function toggleUserMenu(event) {
 
 function logout() {
   auth.logout()
+  void cart.syncAuthState()
   router.push({ name: 'home' })
 }
 
@@ -102,7 +106,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
           <i class="pi pi-chevron-down user-menu-icon" />
         </button>
         <Menu ref="userMenuRef" :model="userMenuItems" popup />
-        <button v-if="!isAuthed" class="btn btn-primary btn-sm">Đăng bán tác quyền</button>
+        <RouterLink v-if="!isAuthed" to="/auth/register/role" class="btn btn-primary btn-sm">Đăng ký</RouterLink>
       </div>
     </div>
   </header>

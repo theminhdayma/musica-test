@@ -95,6 +95,18 @@ export async function getMeApi() {
   return { data: res.data }
 }
 
+export async function updateBuyerProfileApi(input: {
+  avatarUrl?: string | null
+  dateOfBirth?: string | null
+}) {
+  const res = await apiRequest<MeProfile['profile']>({
+    path: '/me/buyer-profile',
+    method: 'PATCH',
+    body: input
+  })
+  return { data: res.data }
+}
+
 export async function changePasswordApi(input: { oldPassword: string; newPassword: string }) {
   const res = await apiRequest<{ ok: true }>({
     path: '/me/changePassword',

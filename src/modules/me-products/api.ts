@@ -2,6 +2,30 @@ import { products as mockProducts } from '../../data/catalog'
 import { apiRequest, getApiBaseUrl } from '../../shared/api/http'
 import { mockFlags } from '../../shared/api/mockFlags'
 import type { MyProductDetail, MyProductsListMeta, MyProductsListResponse } from './types'
+import { DEMO_PRODUCT, DEMO_PRODUCT_ID, useTourDemoStore } from '../../stores/tourDemo.store'
+
+type ApiProduct = {
+  id: string
+  title: string
+  artistId?: string
+  authorName?: string | null
+  genres?: string[]
+  useCases?: string[]
+  duration?: number | null
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
+  createdAt: string
+  updatedAt?: string
+  description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
+}
+
+type SignedUploadUrlData = {
+  uploadUrl: string
+  fileKey: string
+}
 
 type ApiProduct = {
   id: string
@@ -84,6 +108,17 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
 
+  // Demo mode: trả về demo product trong danh sách
+  const demo = useTourDemoStore()
+  if (demo.isDemo && !baseUrl) {
+    const page = input.page || 1
+    const pageSize = input.pageSize || 20
+    const items = demo.demoProduct ? [demo.demoProduct] : []
+    const { slice, meta } = paginate(items, page, pageSize)
+    const data: MyProductsListResponse = { items: slice }
+    return { data, meta }
+  }
+
   if (shouldMock) {
     const page = input.page || 1
     const pageSize = input.pageSize || 20
@@ -104,6 +139,13 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
 }
 
 export async function getMyProductDetail(productId: string) {
+  // Demo mode: trả về demo product ngay lập tức
+  if (productId === DEMO_PRODUCT_ID) {
+    const demo = useTourDemoStore()
+    const data: MyProductDetail = demo.demoProduct ?? { ...DEMO_PRODUCT }
+    return { data }
+  }
+
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
 
@@ -127,7 +169,6 @@ export async function createMyProduct(input: {
   useCase?: string
   useCases?: string[]
   description?: string
-  duration?: number
 }) {
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
@@ -145,7 +186,7 @@ export async function createMyProduct(input: {
       authorName: input.authorName ?? null,
       genres: input.genres ?? (input.genre ? [input.genre] : []),
       useCases: input.useCases ?? (input.useCase ? [input.useCase] : []),
-      duration: typeof input.duration === 'number' ? input.duration : null,
+      duration: null,
       description: input.description
     }
     mockMyProducts = [created, ...mockMyProducts]
@@ -219,14 +260,18 @@ export async function getMyProductSheetMusicUploadUrl(productId: string) {
   })
 }
 
-export async function confirmMyProductAudioUpload(productId: string, input: { mode: 'original'; fileKey: string }) {
+export async function confirmMyProductAudioUpload(productId: string, input: { mode: 'original'; fileKey: string; duration?: number }) {
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
 
   if (shouldMock) {
     const index = mockMyProducts.findIndex((item) => item.id === productId)
     if (index >= 0) {
-      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+      mockMyProducts[index] = {
+        ...mockMyProducts[index],
+        duration: typeof input.duration === 'number' ? input.duration : mockMyProducts[index].duration,
+        updatedAt: new Date().toISOString(),
+      }
     }
     return { data: mockMyProducts[index] ?? null }
   }

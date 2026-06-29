@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { prefetchProduct } from '../modules/catalog/productPrefetch'
 
@@ -17,9 +18,21 @@ export const routes = [
       return true
     }
   },
-  { path: '/cart', name: 'cart', component: () => import('../pages/cart/index.page.vue') },
-  { path: '/checkout', name: 'checkout', component: () => import('../pages/checkout/index.page.vue') },
+  {
+    path: '/cart',
+    name: 'cart',
+    component: () => import('../pages/cart/index.page.vue'),
+    meta: { requiresAuth: true, requiredRoles: ['BUYER'], requiredPermissions: ['manage_order'] }
+  },
+  {
+    path: '/checkout',
+    name: 'checkout',
+    component: () => import('../pages/checkout/index.page.vue'),
+    meta: { requiresAuth: true, requiredRoles: ['BUYER'], requiredPermissions: ['manage_order'] }
+  },
   { path: '/success', name: 'success', component: () => import('../pages/success/index.page.vue') },
+  { path: '/cancel', name: 'cancel', component: () => import('../pages/cancel/index.page.vue') },
+  { path: '/error', name: 'error', component: () => import('../pages/error/index.page.vue') },
   
   // Auth Routes
   { path: '/login', redirect: '/auth/login' },
@@ -34,10 +47,10 @@ export const routes = [
   { path: '/help', name: 'help', component: () => import('../pages/help/index.page.vue') },
 
   // Protected Routes
-  { path: '/me', redirect: '/me/dashboard' },
+  { path: '/me', redirect: '/me/profile' },
   { path: '/me/dashboard', name: 'my-dashboard', component: () => import('../pages/me/dashboard.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
-  { path: '/me/profile', name: 'my-profile', component: () => import('../pages/me/profile.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
-  { path: '/me/changePassword', name: 'my-change-password', component: () => import('../pages/me/change-password.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
+  { path: '/me/profile', name: 'my-profile', component: () => import('../pages/me/profile.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST', 'BUYER'] } },
+  { path: '/me/changePassword', name: 'my-change-password', component: () => import('../pages/me/change-password.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST', 'BUYER'] } },
   { path: '/me/certificates', name: 'my-certificates', component: () => import('../pages/certificates/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/certificates/:certificateId', name: 'certificate-detail', component: () => import('../pages/certificates/detail.page.vue'), props: true, meta: { requiresAuth: true, requiredRoles: ['BUYER'] } },
   { path: '/me/products', name: 'my-products', component: () => import('../pages/me-products/list.page.vue'), meta: { requiresAuth: true, requiredRoles: ['ARTIST'] } },
@@ -45,7 +58,7 @@ export const routes = [
     path: '/me/products/:productId/:section?', 
     name: 'my-product-detail', 
     component: () => import('../pages/me-products/detail.page.vue'),
-    props: (route) => ({
+    props: (route: RouteLocationNormalizedLoaded) => ({
       productId: String(route.params.productId || ''),
       section: String(route.params.section || ''),
     }),
@@ -58,7 +71,7 @@ export function createAppRouter() {
     history: createWebHistory(),
     routes,
     scrollBehavior() {
-      return { top: 0, behavior: 'smooth' }
+      return { left: 0, top: 0 }
     }
   })
 }

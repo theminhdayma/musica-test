@@ -14,12 +14,18 @@ export const categories = [
 export const moods = ['Sôi động', 'Lãng mạn', 'Chill', 'Tự sự', 'Hùng tráng', 'Vui tươi']
 
 export const artists = [
-  { id: 'minh-tran',   name: 'Minh Trần',   tag: 'V-Pop Songwriter',   tracks: 12 },
-  { id: 'lena-vu',     name: 'Lena Vũ',     tag: 'Indie • Ballad',     tracks: 8 },
-  { id: 'kai-pham',    name: 'Kai Phạm',    tag: 'Producer • EDM',     tracks: 21 },
-  { id: 'huong-bui',   name: 'Hương Bùi',   tag: 'Folk • World',       tracks: 6 },
-  { id: 'leo-nguyen',  name: 'Leo Nguyễn',  tag: 'Lo-Fi • Beatmaker',  tracks: 17 },
-  { id: 'mira-ho',     name: 'Mira Hồ',     tag: 'Pop • Singer',       tracks: 9 }
+  { id: 'minh-tran',    name: 'Minh Trần',    tag: 'V-Pop Songwriter',    tracks: 12 },
+  { id: 'lena-vu',      name: 'Lena Vũ',      tag: 'Indie • Ballad',      tracks: 8 },
+  { id: 'kai-pham',     name: 'Kai Phạm',     tag: 'Producer • EDM',      tracks: 21 },
+  { id: 'huong-bui',    name: 'Hương Bùi',    tag: 'Folk • World',         tracks: 6 },
+  { id: 'leo-nguyen',   name: 'Leo Nguyễn',   tag: 'Lo-Fi • Beatmaker',   tracks: 17 },
+  { id: 'mira-ho',      name: 'Mira Hồ',      tag: 'Pop • Singer',         tracks: 9 },
+  { id: 'tuan-anh',     name: 'Tuấn Anh',     tag: 'Rap • Hip-hop',        tracks: 14 },
+  { id: 'thu-ha',       name: 'Thu Hà',        tag: 'Ballad • V-Pop',       tracks: 11 },
+  { id: 'duc-minh',     name: 'Đức Minh',     tag: 'Jazz • Instrumental',  tracks: 7 },
+  { id: 'ngoc-linh',    name: 'Ngọc Linh',    tag: 'R&B • Soul',           tracks: 5 },
+  { id: 'van-tung',     name: 'Văn Tùng',     tag: 'Rock • Alternative',   tracks: 19 },
+  { id: 'bao-chau',     name: 'Bảo Châu',     tag: 'Acoustic • Indie',     tracks: 13 },
 ]
 
 const cov = {

@@ -2,6 +2,7 @@
 import { useRoute } from 'vue-router'
 import AppHeader from './components/layout/AppHeader.vue'
 import AppFooter from './components/layout/AppFooter.vue'
+import TourFab from './shared/ui/TourFab.vue'
 import { useReveal } from './composables/useReveal'
 
 const route = useRoute()
@@ -19,6 +20,7 @@ useReveal()
       </router-view>
     </main>
     <AppFooter v-if="!route.meta.hideHeaderFooter" />
+    <TourFab v-if="!route.meta.hideHeaderFooter" />
   </div>
 </template>
 

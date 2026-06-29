@@ -71,7 +71,7 @@ export function createAppRouter() {
     history: createWebHistory(),
     routes,
     scrollBehavior() {
-      return { top: 0, behavior: 'smooth' }
+      return { left: 0, top: 0 }
     }
   })
 }

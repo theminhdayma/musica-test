@@ -173,9 +173,14 @@ async function uploadToSignedUrl(url: string, file: File) {
 
 async function uploadTrackAudioFile(productId: string, file: File) {
   ensureAudioFile(file, 'Audio gốc')
+  const duration = await readAudioDuration(file)
   const { data } = await getMyProductOriginalUploadUrl(productId)
   await uploadToSignedUrl(data.uploadUrl, file)
-  await confirmMyProductAudioUpload(productId, { mode: 'original', fileKey: data.fileKey })
+  await confirmMyProductAudioUpload(productId, {
+    mode: 'original',
+    fileKey: data.fileKey,
+    duration
+  })
 }
 
 async function uploadTrackThumbnailFile(productId: string, file: File) {
@@ -238,19 +243,11 @@ async function submitCreate() {
     return
   }
 
-  const durationValue = createForm.duration.trim()
-  const duration = durationValue ? Number(durationValue) : undefined
-  if (durationValue && !Number.isFinite(duration)) {
-    createError.value = 'Duration không hợp lệ'
-    return
-  }
-
   isCreating.value = true
   try {
     const res = await createMyProduct({
       title,
       authorName: createForm.authorName.trim() || undefined,
-      duration: typeof duration === 'number' ? Math.max(0, Math.round(duration)) : undefined,
       description: createForm.description.trim() || undefined,
       genres: createForm.genres.length ? [...createForm.genres] : undefined,
       useCases: createForm.useCases.length ? [...createForm.useCases] : undefined
@@ -462,7 +459,7 @@ onMounted(() => {
 
           <!-- Empty -->
           <div v-else-if="items.length === 0" class="pm-empty">
-            <i class="pi pi-music pm-empty-icon"></i>
+            <i class="pi pi-headphones pm-empty-icon"></i>
             <div class="pm-empty-title">Chưa có sản phẩm nào</div>
             <div class="pm-empty-sub">Bắt đầu bằng cách thêm tác phẩm đầu tiên của bạn</div>
           </div>
@@ -533,7 +530,7 @@ onMounted(() => {
               <!-- Empty row -->
               <tr v-else-if="items.length === 0" class="pm-tr">
                 <td class="pm-td pm-td--empty" colspan="6">
-                  <i class="pi pi-music" style="font-size:24px; opacity:.3;"></i>
+                  <i class="pi pi-headphones" style="font-size:24px; opacity:.3;"></i>
                   <div>Chưa có sản phẩm phù hợp</div>
                 </td>
               </tr>
@@ -598,7 +595,7 @@ onMounted(() => {
     <Dialog v-model:visible="createOpen" modal class="w-[calc(100vw-0.75rem)] sm:w-[min(1040px,96vw)]">
       <template #header>
         <div class="dlg-header">
-          <div class="dlg-header-icon"><i class="pi pi-music"></i></div>
+          <div class="dlg-header-icon"><i class="pi pi-headphones"></i></div>
           <div>
             <div class="dlg-header-title">Thêm sản phẩm mới</div>
             <div class="dlg-header-sub">Điền thông tin và upload file để hoàn tất</div>
@@ -623,18 +620,25 @@ onMounted(() => {
           </div>
           <div class="dlg-fields">
             <label class="dlg-field dlg-field--full">
-              <span class="dlg-label">Tên sản phẩm <span class="dlg-required">*</span></span>
+              <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
+                Tên sản phẩm <span class="dlg-required">*</span>
+                <HintIcon
+                  placement="top"
+                  content="Tên sẽ hiển thị công khai trên chợ. Nên đặt ngắn gọn, dễ nhớ và đúng nội dung (ví dụ: thể loại/mood). Tên tốt giúp người mua tìm thấy nhanh hơn."
+                />
+              </span>
               <input v-model="createForm.title" class="dlg-input" placeholder="Nhập tên bản nhạc" />
             </label>
-            <label class="dlg-field">
-              <span class="dlg-label">Tác giả <span class="dlg-optional">(tuỳ chọn)</span></span>
+            <label class="dlg-field dlg-field--full">
+              <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
+                Tác giả <span class="dlg-optional">(tuỳ chọn)</span>
+                <HintIcon
+                  placement="top"
+                  content="Nếu khác với tên nghệ sĩ hiển thị, bạn có thể điền thêm tác giả/nhạc sĩ. Thông tin rõ ràng giúp tăng độ tin cậy và giảm rủi ro khi kiểm duyệt."
+                />
+              </span>
               <input v-model="createForm.authorName" class="dlg-input" placeholder="Tên tác giả" />
             </label>
-            <label class="dlg-field">
-              <span class="dlg-label">Thời lượng (giây)</span>
-              <input v-model="createForm.duration" class="dlg-input" placeholder="Tự động từ file audio" />
-            </label>
-
             <div class="dlg-field dlg-field--full">
               <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
                 Thể loại
@@ -676,7 +680,13 @@ onMounted(() => {
             </div>
 
             <label class="dlg-field dlg-field--full">
-              <span class="dlg-label">Mô tả</span>
+              <span class="dlg-label" style="display:inline-flex;align-items:center;gap:6px;">
+                Mô tả
+                <HintIcon
+                  placement="top"
+                  content="Mô tả hiển thị công khai trên chợ. Gợi ý: mood, nhịp độ (BPM), nhạc cụ nổi bật, phù hợp video/podcast/quảng cáo nào."
+                />
+              </span>
               <textarea
                 v-model="createForm.description"
                 class="dlg-textarea"
@@ -730,10 +740,6 @@ onMounted(() => {
               {{ createOriginalFile ? createOriginalFile.name : 'Chọn file MP3' }}
               <input type="file" accept=".mp3,audio/*" class="dlg-file-hidden" @change="handleCreateAudioFileChange" />
             </label>
-            <div v-if="createForm.duration" class="dlg-duration-hint">
-              <i class="pi pi-clock"></i>
-              Thời lượng: {{ formatDuration(Number(createForm.duration)) }}
-            </div>
           </div>
 
           <!-- Sheet music -->
@@ -1413,16 +1419,6 @@ onMounted(() => {
 }
 .dlg-file-label:hover { background: var(--c-blue-100); border-color: var(--c-blue-300); }
 .dlg-file-hidden { display: none; }
-
-.dlg-duration-hint {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  color: var(--c-teal-600);
-  font-weight: 600;
-  padding: 4px 0;
-}
 
 /* Dialog footer */
 .dlg-footer {

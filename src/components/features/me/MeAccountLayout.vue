@@ -160,4 +160,3 @@ const tabs = computed<Array<{
   .me-tab-arrow { display: none; }
 }
 </style>
-

@@ -51,11 +51,6 @@ const userMenuItems = computed(() => {
   }
   items.push(
     {
-      label: 'Trợ giúp',
-      icon: 'pi pi-question-circle',
-      command: () => void router.push({ name: 'help' })
-    },
-    {
       label: 'Đăng xuất',
       icon: 'pi pi-sign-out',
       command: () => logout()
@@ -111,7 +106,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
           <i class="pi pi-chevron-down user-menu-icon" />
         </button>
         <Menu ref="userMenuRef" :model="userMenuItems" popup />
-        <button v-if="!isAuthed" class="btn btn-primary btn-sm">Đăng bán tác quyền</button>
+        <RouterLink v-if="!isAuthed" to="/auth/register/role" class="btn btn-primary btn-sm">Đăng ký</RouterLink>
       </div>
     </div>
   </header>

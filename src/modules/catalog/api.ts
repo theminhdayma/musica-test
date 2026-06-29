@@ -113,6 +113,32 @@ export async function listProducts(input: {
     | "genre:asc"
     | "genre:desc";
 }) {
+  const baseUrl = getApiBaseUrl();
+  const shouldMock = mockFlags.products || !baseUrl;
+
+  if (shouldMock) {
+    const limit = input.pageSize ?? 20;
+    const pool = (mockProducts as any[]).slice(0, limit);
+    const items = pool.map((p) => ({
+      id: toPublicProductId(String(p.id)),
+      productCode: p.isrc ? String(p.isrc) : `PROD-${String(p.id).slice(0, 6).padStart(6, "0")}`,
+      title: p.title,
+      thumbnailUrl: p.cover || null,
+      artistDisplayName: p.artist,
+      genre: p.category || null,
+      genres: [p.category].filter(Boolean),
+      durationSeconds: parseDurationToSeconds(p.duration),
+      useCases: Array.isArray(p.tags) ? p.tags : [],
+      basePrice: p.basePrice ?? null,
+      createdAt: typeof p.releaseDate === "string" ? new Date(p.releaseDate).toISOString() : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    return {
+      data: { items } as ProductsListResponse,
+      meta: { pagination: { page: 1, pageSize: limit, totalItems: pool.length, totalPages: 1, hasNextPage: false, hasPrevPage: false } } as ProductsListMeta,
+    };
+  }
+
   const res = await apiRequest<ProductsListResponse, ProductsListMeta>({
     path: "/products",
     method: "GET",

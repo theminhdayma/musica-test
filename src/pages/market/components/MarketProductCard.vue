@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import { formatVND } from '../../../data/catalog'
 import { getProductMarketPricing, getStableSeed, isProductNew, isProductTrending } from '../../../modules/catalog/marketPricing'
 import type { ProductListItem } from '../../../modules/catalog/types'
 
@@ -9,12 +8,21 @@ const props = defineProps<{
   item: ProductListItem
 }>()
 
-const DEFAULT_MARKET_COVERS = Object.values(
-  import.meta.glob('../../../assets/market-default/*.{png,jpg,jpeg,webp}', {
-    eager: true,
-    import: 'default'
-  })
-) as string[]
+function formatVND(n: number | null | undefined): string {
+  if (!n) return '—'
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n)
+}
+
+const COVER_GRADIENTS = [
+  'linear-gradient(135deg, #1f6df0 0%, #14b8a6 100%)',
+  'linear-gradient(135deg, #6366f1 0%, #2aa7d8 55%, #14b8a6 100%)',
+  'linear-gradient(135deg, #0e3fa0 0%, #1f6df0 60%, #14b8a6 100%)',
+  'linear-gradient(135deg, #1f6df0 0%, #6366f1 100%)',
+  'linear-gradient(135deg, #14b8a6 0%, #2aa7d8 55%, #1f6df0 100%)',
+  'linear-gradient(135deg, #7c3aed 0%, #2aa7d8 100%)',
+  'linear-gradient(135deg, #0f766e 0%, #1f6df0 100%)',
+  'linear-gradient(135deg, #2aa7d8 0%, #6366f1 100%)',
+]
 
 const badge = computed(() => {
   if (isProductNew(props.item.createdAt)) return { type: 'new', label: 'Mới' }
@@ -29,17 +37,11 @@ const showTrendingBadge = computed(() => !badge.value && isTrending.value)
 const pricing = computed(() => getProductMarketPricing(props.item))
 
 const coverStyle = computed(() => {
-  const fallbackUrl =
-    DEFAULT_MARKET_COVERS.length > 0
-      ? DEFAULT_MARKET_COVERS[getStableSeed(`${props.item.id}:${props.item.title}`) % DEFAULT_MARKET_COVERS.length]
-      : null
-  const url = props.item.thumbnailUrl || fallbackUrl
-  if (!url) return { background: 'var(--grad-brand)' }
-  return {
-    backgroundImage: `url(${url})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center'
+  if (props.item.thumbnailUrl) {
+    return { backgroundImage: `url(${props.item.thumbnailUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
   }
+  const idx = getStableSeed(`${props.item.id}:${props.item.title}`) % COVER_GRADIENTS.length
+  return { background: COVER_GRADIENTS[idx] }
 })
 
 const durationLabel = computed(() => {
@@ -154,32 +156,28 @@ const accentGradient = computed(() => {
 
     <!-- Body -->
     <div class="pcard__body">
-      <!-- Artist row -->
-      <div class="pcard__artist-row">
-        <div class="pcard__artist-avatar" :style="{ background: accentGradient }">
-          {{ item.artistDisplayName.charAt(0).toUpperCase() }}
+      <!-- Row 1: artist (left) + genre/use-cases (right) -->
+      <div class="pcard__meta-row">
+        <div class="pcard__artist-row">
+          <div class="pcard__artist-avatar" :style="{ background: accentGradient }">
+            {{ item.artistDisplayName.charAt(0).toUpperCase() }}
+          </div>
+          <span class="pcard__artist-name">{{ item.artistDisplayName }}</span>
         </div>
-        <span class="pcard__artist-name">{{ item.artistDisplayName }}</span>
+        <div class="pcard__tags">
+          <div class="pcard__tags-row">
+            <span v-if="primaryGenre" class="pcard__genre-tag pcard__genre-tag--primary">{{ primaryGenre }}</span>
+          </div>
+          <div class="pcard__tags-row">
+            <span v-for="uc in topUseCases" :key="uc" class="pcard__usecase-tag">{{ uc }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- Title -->
+      <!-- Row 2: title -->
       <div class="pcard__title" :title="item.title">{{ item.title }}</div>
 
-      <!-- Genre tags -->
-      <div v-if="primaryGenre" class="pcard__genres">
-        <span class="pcard__genre-tag pcard__genre-tag--primary">{{ primaryGenre }}</span>
-        <span v-for="g in secondaryGenres" :key="g" class="pcard__genre-tag">{{ g }}</span>
-      </div>
-
-      <!-- Use-cases -->
-      <div v-if="topUseCases.length" class="pcard__usecases">
-        <span v-for="uc in topUseCases" :key="uc" class="pcard__usecase-tag">
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          {{ uc }}
-        </span>
-      </div>
-
-      <!-- Stats row -->
+      <!-- Row 3: stats -->
       <div class="pcard__stats">
         <span class="pcard__stat">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="#facc15"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -193,10 +191,7 @@ const accentGradient = computed(() => {
         </span>
       </div>
 
-      <!-- Divider -->
-      <div class="pcard__divider" />
-
-      <!-- Footer / Price -->
+      <!-- Row 4: price -->
       <div class="pcard__footer">
         <div class="pcard__price-block">
           <span class="pcard__price-sale">{{ formatVND(pricing.currentPrice) }}</span>
@@ -221,6 +216,7 @@ const accentGradient = computed(() => {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  height: 100%;
   color: inherit;
   text-decoration: none;
   transition: box-shadow .3s var(--ease-out), border-color .3s, transform .3s var(--ease-out);
@@ -418,6 +414,36 @@ const accentGradient = computed(() => {
   gap: 7px;
 }
 
+/* ===== Meta row: artist left, tags right ===== */
+.pcard__meta-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  height: 44px;
+}
+
+.pcard__tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 54%;
+  min-width: 0;
+}
+.pcard__tags-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* ===== Artist row ===== */
 .pcard__artist-row {
   display: flex;
@@ -457,21 +483,17 @@ const accentGradient = computed(() => {
   line-height: 1.3;
 }
 
-/* ===== Genre tags ===== */
-.pcard__genres {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
+/* ===== Genre tag ===== */
 .pcard__genre-tag {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   background: var(--c-bg-mute);
   color: var(--c-text-mute);
+  white-space: nowrap;
 }
 .pcard__genre-tag--primary {
   background: var(--c-blue-50);
@@ -479,23 +501,18 @@ const accentGradient = computed(() => {
   border: 1px solid var(--c-blue-100);
 }
 
-/* ===== Use-cases ===== */
-.pcard__usecases {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
+/* ===== Use-case tag ===== */
 .pcard__usecase-tag {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
   padding: 2px 7px;
   border-radius: var(--radius-full);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   background: var(--c-teal-50);
   color: var(--c-teal-600);
   border: 1px solid rgba(20, 184, 166, 0.2);
+  white-space: nowrap;
 }
 
 /* ===== Stats row ===== */
@@ -521,12 +538,6 @@ const accentGradient = computed(() => {
   color: var(--c-text-mute);
 }
 
-/* ===== Divider ===== */
-.pcard__divider {
-  height: 1px;
-  background: var(--c-border);
-}
-
 /* ===== Footer / Price ===== */
 .pcard__footer {
   display: flex;
@@ -534,6 +545,17 @@ const accentGradient = computed(() => {
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
+  position: relative;
+  padding-top: 10px;
+}
+.pcard__footer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--c-border);
 }
 .pcard__price-block {
   display: flex;
@@ -541,7 +563,7 @@ const accentGradient = computed(() => {
   gap: 1px;
 }
 .pcard__price-sale {
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 900;
   color: var(--c-blue-600);
   letter-spacing: -0.02em;
@@ -567,6 +589,11 @@ const accentGradient = computed(() => {
   box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
   animation: discountPulse 2s ease-in-out infinite;
   flex-shrink: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translateY(-50%);
+  z-index: 3;
 }
 
 @keyframes discountPulse {

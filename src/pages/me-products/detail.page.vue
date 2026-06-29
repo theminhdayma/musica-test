@@ -195,13 +195,6 @@ const goBackToList = () => {
   })
 }
 
-const parseDuration = (value: string | null | undefined) => {
-  if (value === undefined || value === null || value.trim().length === 0) return undefined
-  const parsed = Number(value)
-  if (Number.isNaN(parsed) || !Number.isFinite(parsed)) return undefined
-  return parsed
-}
-
 const formatDuration = (seconds: number | null | undefined) => {
   if (typeof seconds !== 'number' || Number.isNaN(seconds)) return 'Chưa có'
   const mins = Math.floor(seconds / 60)
@@ -369,9 +362,14 @@ const openSheetMusicPdf = async (track: MyProductDetail) => {
 
 const uploadTrackAudioFile = async (productId: string, file: File) => {
   ensureAudioFile(file, 'Audio gốc')
+  const duration = await readAudioDurationSeconds(file)
   const signed = await getMyProductOriginalUploadUrl(productId)
   await uploadToSignedUrl(signed.data.uploadUrl, file)
-  const confirmed = await confirmMyProductAudioUpload(productId, { mode: 'original', fileKey: signed.data.fileKey })
+  const confirmed = await confirmMyProductAudioUpload(productId, {
+    mode: 'original',
+    fileKey: signed.data.fileKey,
+    duration: Math.max(0, Math.round(duration)),
+  })
   const nextOriginalUrls = { ...originalAudioUrls.value }
   delete nextOriginalUrls[productId]
   originalAudioUrls.value = nextOriginalUrls
@@ -501,11 +499,6 @@ const editThumbnailFile = ref<File | null>(null)
 const editThumbnailUrl = ref<string | null>(null)
 const editOriginalAudioUrl = ref<string | null>(null)
 
-const editDurationDisplay = computed(() => {
-  const parsed = parseDuration(editForm.duration)
-  return parsed === undefined ? null : formatDuration(Math.max(0, Math.round(parsed)))
-})
-
 const clearEditDialogError = () => {
   editDialogErrorMessage.value = null
 }
@@ -585,14 +578,12 @@ const submitEdit = async () => {
   isLoading.value = true
 
   try {
-    const duration = parseDuration(editForm.duration)
     const updatePayload = {
       title: editForm.title,
       authorName: editForm.authorName,
       genres: editForm.genres,
       useCases: editForm.useCases,
       description: editForm.description,
-      duration: duration === undefined ? undefined : Math.max(0, Math.round(duration)),
     }
 
     await updateMyProduct(selectedTrack.value.id, updatePayload)
@@ -1609,7 +1600,6 @@ onBeforeUnmount(() => {
       :form="editForm"
       :field-class="fieldClass"
       :file-input-class="fileInputClass"
-      :duration-display="editDurationDisplay"
       :audio-url="editOriginalAudioUrl || (selectedTrack ? (originalAudioUrls[selectedTrack.id] ?? null) : null)"
       :thumbnail-url="editThumbnailUrl || (selectedTrack ? (thumbnailUrls[selectedTrack.id] ?? null) : null)"
       :audio-file="editOriginalFile"

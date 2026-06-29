@@ -16,6 +16,7 @@ import './styles/main.css'
 import './styles/admin-vars.css'
 import 'primeicons/primeicons.css'
 import 'floating-vue/dist/style.css'
+import 'shepherd.js/dist/css/shepherd.css'
 
 export const createApp = ViteSSG(
   App,

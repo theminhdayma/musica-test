@@ -7,6 +7,7 @@ import {
   canAccessBuyerArea,
   hasClientPermission
 } from '../modules/auth/auth.capabilities'
+import { useTourDemoStore } from '../stores/tourDemo.store'
 
 type AuthStore = ReturnType<typeof useAuthStore>
 
@@ -53,6 +54,14 @@ export function installRouterGuards(input: { router: Router; auth: AuthStore }) 
     const requiredPermissions = to.meta?.requiredPermissions
 
     if (!requiresAuth) return true
+
+    // Demo mode: guest có thể bypass auth guard cho tất cả route /me/*
+    const demo = useTourDemoStore()
+    if (demo.isDemo && !input.auth.isAuthenticated) {
+      const demoRoles = demo.guestDemoRoles as AuthRole[]
+      if (hasAnyRole(demoRoles, requiredRoles)) return true
+    }
+
     if (!input.auth.isAuthenticated) {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
@@ -63,5 +72,10 @@ export function installRouterGuards(input: { router: Router; auth: AuthStore }) 
       return { name: 'home' }
     }
     return true
+  })
+
+  input.router.afterEach(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, left: 0 })
   })
 }

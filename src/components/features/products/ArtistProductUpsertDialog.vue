@@ -11,7 +11,6 @@ type ProductForm = {
   genres: ProductGenre[]
   useCases: ProductUseCase[]
   description: string
-  duration: string
 }
 
 const props = withDefaults(
@@ -23,7 +22,6 @@ const props = withDefaults(
     form: ProductForm
     fieldClass: string
     fileInputClass: string
-    durationDisplay: string | null
     audioUrl: string | null
     thumbnailUrl: string | null
     audioFile: File | null
@@ -209,13 +207,6 @@ const toggleSelection = <TValue extends string>(current: TValue[], value: TValue
           </div>
         </article>
 
-        <label class="mt-4 block space-y-2">
-          <span class="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--admin-text-muted)]">Thời lượng (giây)</span>
-          <input v-model="props.form.duration" :class="props.fieldClass" readonly />
-          <span class="text-xs text-[color:var(--admin-text-muted)]">
-            {{ props.durationDisplay ? `≈ ${props.durationDisplay}` : 'Chọn file audio để tự đọc thời lượng.' }}
-          </span>
-        </label>
       </section>
     </div>
 
@@ -231,4 +222,3 @@ const toggleSelection = <TValue extends string>(current: TValue[], value: TValue
     </template>
   </Dialog>
 </template>
-

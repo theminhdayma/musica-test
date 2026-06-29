@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   /* Palette: light, white, blue, teal */
   --c-bg: #ffffff;
@@ -252,3 +256,161 @@ img { max-width: 100%; display: block; }
 }
 .page-enter-from { opacity: 0; transform: translateY(8px); }
 .page-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* ── floating-vue: artist-hint theme ── */
+.v-popper--theme-artist-hint .v-popper__inner {
+  background: linear-gradient(135deg, #0c1e33 0%, #0e3fa0 100%);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  max-width: 280px;
+  box-shadow: 0 8px 28px rgba(12, 30, 51, 0.35), 0 2px 8px rgba(31, 109, 240, 0.25);
+  border: 1px solid rgba(31, 109, 240, 0.3);
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+}
+.v-popper--theme-artist-hint .v-popper__arrow-outer {
+  border-color: rgba(14, 63, 160, 0.85);
+}
+.v-popper--theme-artist-hint .v-popper__arrow-inner {
+  border-color: #0e3fa0;
+}
+.v-popper--theme-artist-hint.v-popper__popper {
+  z-index: 9999;
+}
+
+/* ─── Shepherd.js — Musica Tour Theme ─────────────────────────────────────── */
+.musica-shepherd-element,
+.shepherd-element {
+  z-index: 9998 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.musica-shepherd-element .shepherd-content,
+.shepherd-element .shepherd-content {
+  background: #fff !important;
+  border-radius: 18px !important;
+  box-shadow: 0 24px 60px rgba(15, 40, 70, 0.14), 0 4px 16px rgba(31, 109, 240, 0.12) !important;
+  border: 1px solid rgba(31, 109, 240, 0.12) !important;
+  overflow: hidden;
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+  max-width: 380px;
+  margin: 0 !important;
+}
+
+.musica-shepherd-element .shepherd-header,
+.shepherd-element .shepherd-header {
+  background: linear-gradient(135deg, #1f6df0 0%, #2aa7d8 55%, #14b8a6 100%) !important;
+  padding: 16px 20px 14px !important;
+}
+
+.musica-shepherd-element .shepherd-title,
+.shepherd-element .shepherd-title {
+  color: #fff !important;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.musica-shepherd-element .shepherd-cancel-icon,
+.shepherd-element .shepherd-cancel-icon {
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  transition: color 0.15s;
+}
+.musica-shepherd-element .shepherd-cancel-icon:hover,
+.shepherd-element .shepherd-cancel-icon:hover {
+  color: #fff !important;
+}
+
+.musica-shepherd-element .shepherd-text,
+.shepherd-element .shepherd-text {
+  padding: 16px 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #374151;
+  white-space: normal;
+}
+.musica-shepherd-element .shepherd-text p,
+.shepherd-element .shepherd-text p {
+  margin: 0 0 10px;
+}
+.musica-shepherd-element .shepherd-text p:last-child,
+.shepherd-element .shepherd-text p:last-child {
+  margin-bottom: 0;
+}
+.musica-shepherd-element .shepherd-text ul,
+.musica-shepherd-element .shepherd-text ol,
+.shepherd-element .shepherd-text ul,
+.shepherd-element .shepherd-text ol {
+  margin: 8px 0 10px;
+  padding-left: 20px;
+}
+.musica-shepherd-element .shepherd-text li,
+.shepherd-element .shepherd-text li {
+  margin: 0;
+}
+
+.musica-shepherd-element .shepherd-footer,
+.shepherd-element .shepherd-footer {
+  padding: 0 20px 16px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.shepherd-btn-primary {
+  background: linear-gradient(135deg, #1f6df0 0%, #2aa7d8 55%, #14b8a6 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 9px 18px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: opacity 0.15s, transform 0.15s !important;
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif) !important;
+}
+.shepherd-btn-primary:hover {
+  opacity: 0.9 !important;
+  transform: translateY(-1px) !important;
+}
+
+.shepherd-btn-secondary {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  padding: 9px 18px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: background 0.15s !important;
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif) !important;
+}
+.shepherd-btn-secondary:hover {
+  background: #e5e7eb !important;
+}
+
+/* Modal overlay */
+.shepherd-modal-overlay-container {
+  z-index: 9990 !important;
+  fill: rgba(10, 20, 50, 0.55);
+}
+
+/* Arrow */
+.musica-shepherd-element .shepherd-arrow::before,
+.shepherd-element .shepherd-arrow::before {
+  background: #fff !important;
+}

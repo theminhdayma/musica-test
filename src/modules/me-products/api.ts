@@ -2,6 +2,30 @@ import { products as mockProducts } from '../../data/catalog'
 import { apiRequest, getApiBaseUrl } from '../../shared/api/http'
 import { mockFlags } from '../../shared/api/mockFlags'
 import type { MyProductDetail, MyProductsListMeta, MyProductsListResponse } from './types'
+import { DEMO_PRODUCT, DEMO_PRODUCT_ID, useTourDemoStore } from '../../stores/tourDemo.store'
+
+type ApiProduct = {
+  id: string
+  title: string
+  artistId?: string
+  authorName?: string | null
+  genres?: string[]
+  useCases?: string[]
+  duration?: number | null
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
+  createdAt: string
+  updatedAt?: string
+  description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
+}
+
+type SignedUploadUrlData = {
+  uploadUrl: string
+  fileKey: string
+}
 
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const totalItems = items.length
@@ -25,11 +49,35 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
 function mapMyProduct(p: any) {
   return {
     id: p.id,
-    productCode: p.isrc ? String(p.isrc) : `PROD-${String(p.id).slice(0, 6).padStart(6, '0')}`,
     title: p.title,
     thumbnailUrl: p.cover || null,
-    status: 'PUBLISHED',
-    createdAt: new Date().toISOString()
+    status: 'PENDING',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    artistId: 'me',
+    authorName: p.authorName || null,
+    genres: Array.isArray(p.genres) ? p.genres : [],
+    useCases: Array.isArray(p.useCases) ? p.useCases : [],
+    duration: typeof p.duration === 'number' ? p.duration : null
+  }
+}
+
+let mockMyProducts = (mockProducts as any[]).map(mapMyProduct)
+
+function mapApiProduct(p: ApiProduct) {
+  return {
+    ...p,
+    id: p.id,
+    title: p.title,
+    thumbnailUrl: null,
+    status: p.status,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt ?? p.createdAt,
+    artistId: p.artistId ?? '',
+    authorName: p.authorName ?? null,
+    genres: Array.isArray(p.genres) ? p.genres : [],
+    useCases: Array.isArray(p.useCases) ? p.useCases : [],
+    duration: typeof p.duration === 'number' ? p.duration : null
   }
 }
 
@@ -37,11 +85,22 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
 
+  // Demo mode: trả về demo product trong danh sách
+  const demo = useTourDemoStore()
+  if (demo.isDemo && !baseUrl) {
+    const page = input.page || 1
+    const pageSize = input.pageSize || 20
+    const items = demo.demoProduct ? [demo.demoProduct] : []
+    const { slice, meta } = paginate(items, page, pageSize)
+    const data: MyProductsListResponse = { items: slice }
+    return { data, meta }
+  }
+
   if (shouldMock) {
     const page = input.page || 1
     const pageSize = input.pageSize || 20
     const q = (input.q || '').trim().toLowerCase()
-    const items = (mockProducts as any[]).filter(p => !q || String(p.title || '').toLowerCase().includes(q)).map(mapMyProduct)
+    const items = (mockMyProducts as any[]).filter(p => !q || String(p.title || '').toLowerCase().includes(q))
     const { slice, meta } = paginate(items, page, pageSize)
     const data: MyProductsListResponse = { items: slice }
     return { data, meta }
@@ -52,21 +111,285 @@ export async function listMyProducts(input: { page?: number; pageSize?: number; 
     method: 'GET',
     query: input
   })
-  return { data: res.data, meta: res.meta }
+  const data: MyProductsListResponse = { items: (res.data.items as any[]).map(mapApiProduct) }
+  return { data, meta: res.meta }
 }
 
 export async function getMyProductDetail(productId: string) {
+  // Demo mode: trả về demo product ngay lập tức
+  if (productId === DEMO_PRODUCT_ID) {
+    const demo = useTourDemoStore()
+    const data: MyProductDetail = demo.demoProduct ?? { ...DEMO_PRODUCT }
+    return { data }
+  }
+
   const baseUrl = getApiBaseUrl()
   const shouldMock = mockFlags.meProducts || !baseUrl
 
   if (shouldMock) {
-    const found = (mockProducts as any[]).find(p => p.id === productId)
+    const found = (mockMyProducts as any[]).find(p => p.id === productId)
     if (!found) throw new Error('NOT_FOUND')
-    const data: MyProductDetail = { ...mapMyProduct(found), description: found.description }
+    const data: MyProductDetail = { ...found, description: (found as any).description }
     return { data }
   }
 
-  const res = await apiRequest<MyProductDetail>({ path: `/me/products/${productId}`, method: 'GET' })
-  return { data: res.data }
+  const res = await apiRequest<ApiProduct>({ path: `/me/products/${productId}`, method: 'GET' })
+  const data: MyProductDetail = { ...mapApiProduct(res.data), description: res.data.description ?? undefined }
+  return { data }
 }
 
+export async function createMyProduct(input: {
+  title: string
+  authorName?: string
+  genre?: string
+  genres?: string[]
+  useCase?: string
+  useCases?: string[]
+  description?: string
+}) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const now = new Date().toISOString()
+    const created: MyProductDetail = {
+      id: `mock_${Math.random().toString(36).slice(2)}`,
+      title: input.title,
+      thumbnailUrl: null,
+      status: 'PENDING',
+      createdAt: now,
+      updatedAt: now,
+      artistId: 'me',
+      authorName: input.authorName ?? null,
+      genres: input.genres ?? (input.genre ? [input.genre] : []),
+      useCases: input.useCases ?? (input.useCase ? [input.useCase] : []),
+      duration: null,
+      description: input.description
+    }
+    mockMyProducts = [created, ...mockMyProducts]
+    return { data: created }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: '/me/products',
+    method: 'POST',
+    body: input
+  })
+  const data: MyProductDetail = { ...mapApiProduct(res.data), description: res.data.description ?? undefined }
+  return { data }
+}
+
+export async function getMyProductOriginalUploadUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/audio',
+        fileKey: `audio/product/${productId}/original.mp3`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/original-upload-url`,
+    method: 'POST'
+  })
+}
+
+export async function getMyProductThumbnailUploadUrl(productId: string, input: { extension: 'png' | 'jpg' | 'jpeg' | 'webp' }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/thumbnail',
+        fileKey: `image/product/${productId}/thumbnail.${input.extension}`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/thumbnail-upload-url`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function getMyProductSheetMusicUploadUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return {
+      data: {
+        uploadUrl: 'mock://upload/sheet-music',
+        fileKey: `document/product/${productId}/sheet.pdf`
+      } satisfies SignedUploadUrlData
+    }
+  }
+
+  return apiRequest<SignedUploadUrlData>({
+    path: `/me/products/${productId}/sheet-music-upload-url`,
+    method: 'POST'
+  })
+}
+
+export async function confirmMyProductAudioUpload(productId: string, input: { mode: 'original'; fileKey: string; duration?: number }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = {
+        ...mockMyProducts[index],
+        duration: typeof input.duration === 'number' ? input.duration : mockMyProducts[index].duration,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-audio-upload`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function confirmMyProductThumbnailUpload(productId: string, input: { fileKey: string }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-thumbnail-upload`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function confirmMyProductSheetMusicUpload(productId: string, input: { fileKey: string }) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  return apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/confirm-sheet-music-upload`,
+    method: 'POST',
+    body: input
+  })
+}
+
+export async function updateMyProduct(
+  productId: string,
+  input: {
+    title?: string
+    authorName?: string
+    genres?: string[]
+    useCases?: string[]
+    description?: string
+    duration?: number
+  },
+) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = {
+        ...mockMyProducts[index],
+        ...input,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: `/me/products/${productId}`,
+    method: 'PATCH',
+    body: input,
+  })
+  return { data: mapApiProduct(res.data) }
+}
+
+export async function replaceMyProductAllowedPermissions(productId: string, permissionIds: string[]) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    const index = mockMyProducts.findIndex((item) => item.id === productId)
+    if (index >= 0) {
+      mockMyProducts[index] = { ...mockMyProducts[index], updatedAt: new Date().toISOString() }
+    }
+    return { data: mockMyProducts[index] ?? null }
+  }
+
+  const res = await apiRequest<ApiProduct>({
+    path: `/me/products/${productId}/allowed-permissions`,
+    method: 'PUT',
+    body: { permissionIds },
+  })
+  return { data: mapApiProduct(res.data) }
+}
+
+export async function getMyProductThumbnailUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { thumbnailUrl: '' } }
+  }
+
+  return apiRequest<{ thumbnailUrl: string }>({
+    path: `/me/products/${productId}/thumbnail-url`,
+    method: 'GET',
+  })
+}
+
+export async function getMyProductOriginalPlaybackUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { playbackUrl: '' } }
+  }
+
+  return apiRequest<{ playbackUrl: string }>({
+    path: `/me/products/${productId}/original-playback-url`,
+    method: 'GET',
+  })
+}
+
+export async function getMyProductSheetMusicUrl(productId: string) {
+  const baseUrl = getApiBaseUrl()
+  const shouldMock = mockFlags.meProducts || !baseUrl
+
+  if (shouldMock) {
+    return { data: { sheetMusicUrl: '' } }
+  }
+
+  return apiRequest<{ sheetMusicUrl: string }>({
+    path: `/me/products/${productId}/sheet-music-url`,
+    method: 'GET',
+  })
+}

@@ -4,7 +4,6 @@ import MarketProductCard from './MarketProductCard.vue'
 
 defineProps<{
   items: ProductListItem[]
-  rawProducts?: any[]
 }>()
 </script>
 
@@ -14,7 +13,6 @@ defineProps<{
       v-for="it in items"
       :key="it.id"
       :item="it"
-      :raw-product="rawProducts?.find(r => r.isrc === it.productCode || `PROD-${String(r.id).slice(0, 6).padStart(6, '0')}` === it.productCode)"
     />
   </div>
 </template>

@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import path from 'node:path'
 import { products } from './src/data/catalog.js'
+import { fileURLToPath, URL } from 'node:url'
 
 function stableUuidFromString(input) {
   let h = 2166136261
@@ -27,8 +29,14 @@ function stableUuidFromString(input) {
 
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
   server: {
     port: 5173,
+    strictPort: true,
     open: false
   },
   ssgOptions: {

@@ -1,139 +1,208 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { getProductMarketPricing, getStableSeed, isProductNew, isProductTrending } from '../../../modules/catalog/marketPricing'
 import type { ProductListItem } from '../../../modules/catalog/types'
 
 const props = defineProps<{
   item: ProductListItem
-  rawProduct?: any
 }>()
 
-// Derive card badge state from raw product data
-const badge = computed(() => {
-  if (!props.rawProduct) return null
-  const listens = props.rawProduct.listens || 0
-  const releaseDate = props.rawProduct.releaseDate ? new Date(props.rawProduct.releaseDate) : null
-  const now = new Date()
-  const diffDays = releaseDate ? (now.getTime() - releaseDate.getTime()) / (1000 * 60 * 60 * 24) : 999
+function formatVND(n: number | null | undefined): string {
+  if (!n) return '—'
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n)
+}
 
-  if (listens > 400000) return { type: 'hot', label: 'HOT' }
-  if (diffDays < 90) return { type: 'new', label: 'MỚI' }
-  if (listens > 200000) return { type: 'trend', label: 'TRENDING' }
+const COVER_GRADIENTS = [
+  'linear-gradient(135deg, #1f6df0 0%, #14b8a6 100%)',
+  'linear-gradient(135deg, #6366f1 0%, #2aa7d8 55%, #14b8a6 100%)',
+  'linear-gradient(135deg, #0e3fa0 0%, #1f6df0 60%, #14b8a6 100%)',
+  'linear-gradient(135deg, #1f6df0 0%, #6366f1 100%)',
+  'linear-gradient(135deg, #14b8a6 0%, #2aa7d8 55%, #1f6df0 100%)',
+  'linear-gradient(135deg, #7c3aed 0%, #2aa7d8 100%)',
+  'linear-gradient(135deg, #0f766e 0%, #1f6df0 100%)',
+  'linear-gradient(135deg, #2aa7d8 0%, #6366f1 100%)',
+]
+
+const badge = computed(() => {
+  if (isProductNew(props.item.createdAt)) return { type: 'new', label: 'Mới' }
   return null
 })
 
-const hasDiscount = computed(() => {
-  if (!props.rawProduct) return false
-  // Products with lofi category have a simulated 20% discount
-  return props.rawProduct.category === 'lofi'
-})
+const isTrending = computed(() => isProductTrending(props.item))
 
-const discountPercent = 20
+const showFlame = computed(() => badge.value?.type === 'new' && isTrending.value)
+const showTrendingBadge = computed(() => !badge.value && isTrending.value)
 
-const price = computed(() => {
-  if (!props.rawProduct) return null
-  return props.rawProduct.basePrice || null
-})
+const pricing = computed(() => getProductMarketPricing(props.item))
 
-const originalPrice = computed(() => {
-  if (!hasDiscount.value || !price.value) return null
-  return Math.round(price.value / (1 - discountPercent / 100))
-})
-
-const formattedPrice = (val: number) =>
-  new Intl.NumberFormat('vi-VN').format(val) + ' ₫'
-
-const bpm = computed(() => props.rawProduct?.bpm || null)
-const duration = computed(() => props.rawProduct?.duration || null)
-const key = computed(() => props.rawProduct?.key || null)
-const rating = computed(() => props.rawProduct?.rating || null)
-const listens = computed(() => {
-  const n = props.rawProduct?.listens || 0
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000) return Math.round(n / 1000) + 'K'
-  return String(n)
-})
-const samplePeak = computed(() => props.rawProduct?.samplePeak || [])
 const coverStyle = computed(() => {
-  const url = props.item.thumbnailUrl
-  if (!url) return { background: 'var(--grad-brand)' }
-  if (url.startsWith('linear-gradient') || url.startsWith('radial-gradient')) {
-    return { background: url }
+  if (props.item.thumbnailUrl) {
+    return { backgroundImage: `url(${props.item.thumbnailUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
   }
-  return { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+  const idx = getStableSeed(`${props.item.id}:${props.item.title}`) % COVER_GRADIENTS.length
+  return { background: COVER_GRADIENTS[idx] }
+})
+
+const durationLabel = computed(() => {
+  const s = props.item.durationSeconds
+  if (!s) return null
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${String(sec).padStart(2, '0')}`
+})
+
+const primaryGenre = computed(() => {
+  if (props.item.genres && props.item.genres.length > 0) return props.item.genres[0]
+  return props.item.genre || null
+})
+
+const secondaryGenres = computed(() => {
+  const all = props.item.genres && props.item.genres.length > 0 ? props.item.genres : props.item.genre ? [props.item.genre] : []
+  return all.slice(1, 3)
+})
+
+const topUseCases = computed(() => (props.item.useCases || []).slice(0, 2))
+
+const seed = computed(() => getStableSeed(`${props.item.id}:${props.item.title}`))
+
+const ratingValue = computed(() => {
+  const r = 3.8 + (seed.value % 13) * 0.1
+  return Math.min(5, Math.round(r * 10) / 10)
+})
+
+const reviewCount = computed(() => 12 + (seed.value % 89))
+
+const playsCount = computed(() => {
+  const base = 200 + (seed.value % 4800)
+  return base >= 1000 ? `${(base / 1000).toFixed(1)}k` : String(base)
+})
+
+const accentGradient = computed(() => {
+  const gradients = [
+    'linear-gradient(135deg, #1f6df0 0%, #2aa7d8 55%, #14b8a6 100%)',
+    'linear-gradient(135deg, #6366f1 0%, #2aa7d8 55%, #14b8a6 100%)',
+    'linear-gradient(135deg, #0e3fa0 0%, #1f6df0 60%, #14b8a6 100%)',
+    'linear-gradient(135deg, #1f6df0 0%, #6366f1 100%)',
+    'linear-gradient(135deg, #14b8a6 0%, #2aa7d8 55%, #1f6df0 100%)',
+  ]
+  return gradients[seed.value % gradients.length]
 })
 </script>
 
 <template>
-  <RouterLink :to="`/product/${item.id}`" class="pcard" :class="[badge ? `pcard--${badge.type}` : '', hasDiscount ? 'pcard--sale' : '']">
-    <!-- Badge -->
-    <div v-if="badge" class="pcard__badge" :class="`pcard__badge--${badge.type}`">{{ badge.label }}</div>
-    <div v-else-if="hasDiscount" class="pcard__badge pcard__badge--sale">-{{ discountPercent }}%</div>
+  <RouterLink
+    :to="`/product/${item.id}`"
+    class="pcard"
+    :class="[{ 'pcard--new': !!badge, 'pcard--hot': showTrendingBadge }]"
+  >
+    <!-- Badges -->
+    <div v-if="badge" class="pcard__badge pcard__badge--new">
+      <span>{{ badge.label }}</span>
+      <svg v-if="showFlame" class="pcard__badge-flame" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M13.5 2.1c.2 3-1.2 4.6-2.8 6.3-1.5 1.7-3.2 3.5-2.6 6.5.5 2.6 2.9 4.3 5.9 4.1 3-.2 5.2-2.4 5.5-5.4.2-2.4-.9-4.4-2.4-6.1-.6 1.6-1.8 2.8-3.4 3.3.3-1.8-.4-3.1-1.2-4.4-.9-1.5-1.9-3-1-5.3z"/>
+      </svg>
+    </div>
+    <div v-else-if="showTrendingBadge" class="pcard__badge pcard__badge--hot">
+      <svg class="pcard__badge-flame" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M13.5 2.1c.2 3-1.2 4.6-2.8 6.3-1.5 1.7-3.2 3.5-2.6 6.5.5 2.6 2.9 4.3 5.9 4.1 3-.2 5.2-2.4 5.5-5.4.2-2.4-.9-4.4-2.4-6.1-.6 1.6-1.8 2.8-3.4 3.3.3-1.8-.4-3.1-1.2-4.4-.9-1.5-1.9-3-1-5.3z"/>
+      </svg>
+      <span>Hot</span>
+    </div>
+
+    <!-- Sheet music badge -->
+    <div v-if="item.hasSheetMusic" class="pcard__sheet-badge">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3H9z"/></svg>
+      Bản nhạc
+    </div>
 
     <!-- Cover / Thumbnail -->
     <div class="pcard__cover" :style="coverStyle">
-      <!-- Waveform overlay -->
-      <div v-if="samplePeak.length" class="pcard__wave">
+      <!-- Accent line at top -->
+      <div class="pcard__accent-line" :style="{ background: accentGradient }" />
+
+      <!-- Waveform bars -->
+      <div class="pcard__wave">
         <span
-          v-for="(h, i) in samplePeak.slice(0, 28)"
+          v-for="i in 20"
           :key="i"
           class="pcard__wave-bar"
-          :style="{ height: `${Math.min(100, (h / 60) * 100)}%` }"
+          :style="{ height: (25 + ((seed + i * 7) % 70)) + '%' }"
         />
       </div>
+
       <!-- Play overlay -->
       <div class="pcard__play-overlay">
-        <div class="pcard__play-btn">
+        <div class="pcard__play-btn" :style="{ background: accentGradient }">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </div>
         <div class="pcard__quick-actions">
           <button class="pcard__qa-btn" @click.prevent>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             Giỏ hàng
           </button>
+          <button class="pcard__qa-btn pcard__qa-btn--icon" @click.prevent>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </button>
         </div>
+      </div>
+
+      <!-- Duration chip -->
+      <div v-if="durationLabel" class="pcard__duration">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+        {{ durationLabel }}
       </div>
     </div>
 
     <!-- Body -->
     <div class="pcard__body">
-      <!-- Title + Artist -->
+      <!-- Row 1: artist (left) + genre/use-cases (right) -->
+      <div class="pcard__meta-row">
+        <div class="pcard__artist-row">
+          <div class="pcard__artist-avatar" :style="{ background: accentGradient }">
+            {{ item.artistDisplayName.charAt(0).toUpperCase() }}
+          </div>
+          <span class="pcard__artist-name">{{ item.artistDisplayName }}</span>
+        </div>
+        <div class="pcard__tags">
+          <div class="pcard__tags-row">
+            <span v-if="primaryGenre" class="pcard__genre-tag pcard__genre-tag--primary">{{ primaryGenre }}</span>
+          </div>
+          <div class="pcard__tags-row">
+            <span v-for="uc in topUseCases" :key="uc" class="pcard__usecase-tag">{{ uc }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: title -->
       <div class="pcard__title" :title="item.title">{{ item.title }}</div>
-      <div class="pcard__artist">{{ item.artistDisplayName }}</div>
 
-      <!-- Meta row: BPM, Duration, Key -->
-      <div class="pcard__meta">
-        <span v-if="duration" class="pcard__meta-item">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {{ duration }}
-        </span>
-        <span v-if="bpm" class="pcard__meta-item">{{ bpm }} BPM</span>
-        <span v-if="key" class="pcard__meta-item pcard__meta-item--key">{{ key }}</span>
-      </div>
-
-      <!-- Rating + Listens -->
+      <!-- Row 3: stats -->
       <div class="pcard__stats">
-        <span v-if="rating" class="pcard__rating">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          {{ rating }}
+        <span class="pcard__stat">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#facc15"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          {{ ratingValue }}
+          <span class="pcard__stat-mute">({{ reviewCount }})</span>
         </span>
-        <span v-if="listens" class="pcard__listens">{{ listens }} lượt nghe</span>
+        <span class="pcard__stat-sep">·</span>
+        <span class="pcard__stat">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          {{ playsCount }} lượt nghe
+        </span>
       </div>
 
-      <!-- Price footer -->
+      <!-- Row 4: price -->
       <div class="pcard__footer">
-        <div class="pcard__price-wrap">
-          <span v-if="originalPrice" class="pcard__price-original">{{ formattedPrice(originalPrice) }}</span>
-          <span v-if="price" class="pcard__price" :class="{ 'pcard__price--sale': hasDiscount }">
-            {{ formattedPrice(price) }}
-          </span>
+        <div class="pcard__price-block">
+          <span class="pcard__price-sale">{{ formatVND(pricing.currentPrice) }}</span>
+          <span class="pcard__price-original">{{ formatVND(pricing.originalPrice) }}</span>
         </div>
-        <div class="pcard__cta">
-          Cấp phép
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </div>
+        <span class="pcard__discount-badge">-{{ pricing.discountPercent }}%</span>
       </div>
     </div>
+
+    <!-- Bottom glow line (shows on hover) -->
+    <div class="pcard__glow-line" :style="{ background: accentGradient }" />
   </RouterLink>
 </template>
 
@@ -145,63 +214,101 @@ const coverStyle = computed(() => {
   flex-direction: column;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  height: 100%;
   color: inherit;
   text-decoration: none;
   transition: box-shadow .3s var(--ease-out), border-color .3s, transform .3s var(--ease-out);
   cursor: pointer;
 }
 .pcard:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--c-blue-300);
-  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(31, 109, 240, 0.16), 0 4px 16px rgba(20, 184, 166, 0.12);
+  border-color: var(--c-blue-200);
+  transform: translateY(-4px);
 }
-.pcard--hot { border-color: rgba(239, 68, 68, 0.35); }
-.pcard--new { border-color: rgba(20, 184, 166, 0.35); }
-.pcard--trend { border-color: rgba(139, 92, 246, 0.35); }
-.pcard--sale { border-color: rgba(249, 115, 22, 0.35); }
+.pcard--hot { border-color: rgba(239, 68, 68, 0.3); }
+.pcard--new { border-color: rgba(20, 184, 166, 0.3); }
 
-/* ===== Badge ===== */
+/* ===== Top accent line ===== */
+.pcard__accent-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 3;
+}
+
+/* ===== Bottom glow line (shows on hover) ===== */
+.pcard__glow-line {
+  height: 3px;
+  opacity: 0;
+  transition: opacity .3s var(--ease-out);
+  flex-shrink: 0;
+}
+.pcard:hover .pcard__glow-line { opacity: 1; }
+
+/* ===== Badges ===== */
 .pcard__badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 14px;
+  left: 12px;
   z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 3px 9px;
   border-radius: var(--radius-full);
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   pointer-events: none;
+}
+.pcard__badge-flame {
+  color: #ffd166;
+  filter: drop-shadow(0 0 4px rgba(255, 145, 0, 0.6));
+  animation: flameFlicker 0.9s infinite;
 }
 .pcard__badge--hot {
   background: linear-gradient(135deg, #ef4444, #f97316);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
 }
 .pcard__badge--new {
   background: linear-gradient(135deg, #14b8a6, #2aa7d8);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.45);
+  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.4);
 }
-.pcard__badge--trend {
-  background: linear-gradient(135deg, #8b5cf6, #6d3bd7);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.45);
+.pcard__sheet-badge {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.92);
+  color: var(--c-blue-700);
+  border: 1px solid var(--c-blue-100);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
-.pcard__badge--sale {
-  background: linear-gradient(135deg, #f97316, #ef4444);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.45);
+
+@keyframes flameFlicker {
+  0%, 100% { transform: rotate(-8deg) scale(1); opacity: 0.95; }
+  50% { transform: rotate(10deg) scale(1.08); opacity: 1; }
 }
 
 /* ===== Cover ===== */
 .pcard__cover {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -212,12 +319,12 @@ const coverStyle = computed(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 40%;
+  height: 50%;
   display: flex;
   align-items: flex-end;
-  gap: 1.5px;
-  padding: 0 8px;
-  background: linear-gradient(to top, rgba(0,0,0,0.55), transparent);
+  gap: 2px;
+  padding: 0 10px 6px;
+  background: linear-gradient(to top, rgba(12,30,51,0.7), transparent);
   pointer-events: none;
 }
 .pcard__wave-bar {
@@ -225,11 +332,27 @@ const coverStyle = computed(() => {
   flex: 1;
   min-width: 2px;
   border-radius: 2px 2px 0 0;
-  background: rgba(255, 255, 255, 0.5);
-  transition: height .3s var(--ease-out);
+  background: rgba(255, 255, 255, 0.35);
+  transition: background .3s var(--ease-out);
 }
-.pcard:hover .pcard__wave-bar {
-  background: rgba(95, 217, 193, 0.8);
+.pcard:hover .pcard__wave-bar { background: rgba(95, 217, 193, 0.7); }
+
+/* ===== Duration chip ===== */
+.pcard__duration {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(12, 30, 51, 0.72);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
 /* ===== Play Overlay ===== */
@@ -240,8 +363,8 @@ const coverStyle = computed(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: rgba(12, 30, 51, 0.5);
+  gap: 12px;
+  background: rgba(12, 30, 51, 0.45);
   opacity: 0;
   transition: opacity .3s var(--ease-out);
   backdrop-filter: blur(3px);
@@ -249,47 +372,108 @@ const coverStyle = computed(() => {
 .pcard:hover .pcard__play-overlay { opacity: 1; }
 
 .pcard__play-btn {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: var(--grad-brand);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: var(--shadow-glow);
-  transform: scale(0.85);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  transform: scale(0.88);
   transition: transform .25s var(--ease-out);
 }
 .pcard:hover .pcard__play-btn { transform: scale(1); }
 
-.pcard__quick-actions {
-  display: flex;
-  gap: 8px;
-}
+.pcard__quick-actions { display: flex; gap: 8px; }
 .pcard__qa-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
+  gap: 5px;
+  padding: 6px 12px;
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-full);
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: background .2s;
   backdrop-filter: blur(4px);
 }
-.pcard__qa-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.pcard__qa-btn--icon { padding: 6px 8px; }
+.pcard__qa-btn:hover { background: rgba(255, 255, 255, 0.28); }
 
 /* ===== Body ===== */
-.pcard__body { padding: 12px 14px 14px; display: flex; flex-direction: column; flex: 1; }
+.pcard__body {
+  padding: 13px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 7px;
+}
 
+/* ===== Meta row: artist left, tags right ===== */
+.pcard__meta-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  height: 44px;
+}
+
+.pcard__tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 54%;
+  min-width: 0;
+}
+.pcard__tags-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* ===== Artist row ===== */
+.pcard__artist-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pcard__artist-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+.pcard__artist-name {
+  font-size: 12px;
+  color: var(--c-text-mute);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Title ===== */
 .pcard__title {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--c-text);
@@ -299,100 +483,121 @@ const coverStyle = computed(() => {
   line-height: 1.3;
 }
 
-.pcard__artist {
-  font-size: 12.5px;
-  color: var(--c-text-soft);
-  font-weight: 600;
-  margin-top: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pcard__meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.pcard__meta-item {
+/* ===== Genre tag ===== */
+.pcard__genre-tag {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  background: var(--c-bg-mute);
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--c-bg-mute);
   color: var(--c-text-mute);
+  white-space: nowrap;
 }
-.pcard__meta-item--key {
-  background: var(--c-teal-50);
-  color: var(--c-teal-600);
+.pcard__genre-tag--primary {
+  background: var(--c-blue-50);
+  color: var(--c-blue-700);
+  border: 1px solid var(--c-blue-100);
 }
 
+/* ===== Use-case tag ===== */
+.pcard__usecase-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 9.5px;
+  font-weight: 600;
+  background: var(--c-teal-50);
+  color: var(--c-teal-600);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  white-space: nowrap;
+}
+
+/* ===== Stats row ===== */
 .pcard__stats {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 7px;
+  gap: 6px;
 }
-.pcard__rating {
+.pcard__stat {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-soft);
 }
-.pcard__listens {
-  font-size: 11.5px;
+.pcard__stat-mute {
   color: var(--c-text-mute);
   font-weight: 500;
+}
+.pcard__stat-sep {
+  font-size: 11px;
+  color: var(--c-text-mute);
 }
 
 /* ===== Footer / Price ===== */
 .pcard__footer {
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: auto;
+  position: relative;
+  padding-top: 10px;
 }
-.pcard__price-wrap { display: flex; flex-direction: column; }
+.pcard__footer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--c-border);
+}
+.pcard__price-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pcard__price-sale {
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--c-blue-600);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
 .pcard__price-original {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--c-text-mute);
   text-decoration: line-through;
+  font-weight: 500;
 }
-.pcard__price {
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--c-blue-600);
-  letter-spacing: -0.01em;
-}
-.pcard__price--sale { color: #ea580c; }
-
-.pcard__cta {
+.pcard__discount-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 13px;
-  background: var(--grad-brand);
-  color: #fff;
+  justify-content: center;
+  padding: 5px 10px;
   border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 700;
+  background: linear-gradient(135deg, #fb7185, #f97316);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 900;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.25);
-  transition: box-shadow .25s, transform .25s var(--ease-out);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+  animation: discountPulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translateY(-50%);
+  z-index: 3;
 }
-.pcard:hover .pcard__cta {
-  box-shadow: 0 6px 20px rgba(20, 184, 166, 0.4);
-  transform: translateX(1px);
+
+@keyframes discountPulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); transform: scale(1); }
+  50% { box-shadow: 0 6px 20px rgba(249, 115, 22, 0.5); transform: scale(1.04); }
 }
 </style>

@@ -1,13 +1,26 @@
 import type { Router } from 'vue-router'
 import type { AuthRole } from '../modules/auth/types'
 import { useAuthStore } from '../modules/auth/auth.store'
+import { getDefaultAuthenticatedRoute } from '../modules/auth/auth.routing'
+import { canAccessArtistArea, canAccessBuyerArea } from '../modules/auth/auth.capabilities'
+import { useTourDemoStore } from '../stores/tourDemo.store'
 
 type AuthStore = ReturnType<typeof useAuthStore>
 
 function hasAnyRole(userRoles: AuthRole[], required?: unknown) {
   if (!required) return true
   if (!Array.isArray(required)) return true
-  return required.some(r => userRoles.includes(r as AuthRole))
+  return required.some((requiredRole) => {
+    if (requiredRole === 'BUYER') {
+      return canAccessBuyerArea(userRoles)
+    }
+
+    if (requiredRole === 'ARTIST') {
+      return canAccessArtistArea(userRoles)
+    }
+
+    return userRoles.includes(requiredRole as AuthRole)
+  })
 }
 
 export function installRouterGuards(input: { router: Router; auth: AuthStore }) {
@@ -15,15 +28,21 @@ export function installRouterGuards(input: { router: Router; auth: AuthStore }) 
     input.auth.hydrate()
 
     if (to.name === 'login' && input.auth.isAuthenticated) {
-      if (input.auth.roles.includes('ARTIST')) return { name: 'my-products' }
-      if (input.auth.roles.includes('BUYER')) return { name: 'my-certificates' }
-      return { name: 'home' }
+      return getDefaultAuthenticatedRoute(input.auth.roles, input.auth.selectedRole)
     }
 
     const requiresAuth = !!to.meta?.requiresAuth
     const requiredRoles = to.meta?.requiredRoles
 
     if (!requiresAuth) return true
+
+    // Demo mode: guest có thể bypass auth guard cho tất cả route /me/*
+    const demo = useTourDemoStore()
+    if (demo.isDemo && !input.auth.isAuthenticated) {
+      const demoRoles = demo.guestDemoRoles as AuthRole[]
+      if (hasAnyRole(demoRoles, requiredRoles)) return true
+    }
+
     if (!input.auth.isAuthenticated) {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
@@ -31,5 +50,10 @@ export function installRouterGuards(input: { router: Router; auth: AuthStore }) 
       return { name: 'home' }
     }
     return true
+  })
+
+  input.router.afterEach(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, left: 0 })
   })
 }

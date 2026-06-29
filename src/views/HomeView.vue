@@ -1,23 +1,176 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { products, categories, artists } from '../data/catalog'
-import ProductCard from '../components/product/ProductCard.vue'
+import { products, artists as mockArtists } from '../data/catalog'
+import MarketProductCard from '../pages/market/components/MarketProductCard.vue'
 import WaveBars from '../components/ui/WaveBars.vue'
 import SectionHead from '../components/ui/SectionHead.vue'
 import CheckList from '../components/ui/CheckList.vue'
+import { listProducts } from '../modules/catalog/api'
 
 const router = useRouter()
-const activeCat = ref('all')
 const search = ref('')
 
-const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return products.filter(p => {
-    const matchCat = activeCat.value === 'all' || p.category === activeCat.value
-    const matchQ = !q || p.title.toLowerCase().includes(q) || p.artist.toLowerCase().includes(q) || p.tags.join(' ').toLowerCase().includes(q)
-    return matchCat && matchQ
-  })
+const selectedGenre = ref('all')
+
+const FACET_PAGE_SIZE = 100
+const facetItems = ref([])
+const facetLoading = ref(false)
+
+function normalizeLabel(value) {
+  return value
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+async function fetchFacetItems() {
+  facetLoading.value = true
+  try {
+    const { data } = await listProducts({
+      page: 1,
+      pageSize: FACET_PAGE_SIZE,
+      sort: 'title:asc'
+    })
+    facetItems.value = data.items || []
+  } catch {
+    facetItems.value = []
+  } finally {
+    facetLoading.value = false
+  }
+}
+
+const genreOptions = computed(() => {
+  const values = new Set()
+  for (const item of facetItems.value) {
+    const genres = item?.genres?.length ? item.genres : item?.genre ? [item.genre] : []
+    for (const genre of genres) values.add(genre)
+  }
+  if (selectedGenre.value !== 'all') values.add(selectedGenre.value)
+  return [
+    { id: 'all', label: 'Tất cả' },
+    ...Array.from(values).sort((a, b) => a.localeCompare(b)).map(genre => ({
+      id: genre,
+      label: normalizeLabel(genre)
+    }))
+  ]
+})
+
+function buildMarketQuery(overrides) {
+  const state = {
+    genre: selectedGenre.value,
+    ...overrides
+  }
+
+  const query = {}
+  if (state.q) query.q = state.q
+  if (state.genre !== 'all') query.genre = state.genre
+  return query
+}
+
+function goToMarket(overrides) {
+  router.push({ name: 'market', query: buildMarketQuery(overrides) })
+}
+
+function changeGenre(genre) {
+  selectedGenre.value = genre
+  goToMarket({ genre })
+}
+
+// ── Hot products (API) ────────────────────────────────────────────────────────
+const hotProducts = ref([])
+const hotLoading = ref(true)
+
+const hotRow1 = computed(() => hotProducts.value.slice(0, 4))
+const hotRow2 = computed(() => hotProducts.value.slice(4, 8))
+
+function parseMockDuration(d) {
+  if (typeof d !== 'string') return null
+  const parts = d.split(':').map(Number)
+  return parts.length === 2 ? parts[0] * 60 + parts[1] : null
+}
+
+async function fetchHotProducts() {
+  hotLoading.value = true
+  try {
+    const { data } = await listProducts({ highlight: 'trending', pageSize: 8, sort: 'updatedAt:desc' })
+    const trending = (data.items || []).slice(0, 8)
+    if (trending.length >= 8) {
+      hotProducts.value = trending
+      return
+    }
+
+    const { data: extraData } = await listProducts({ pageSize: 8, sort: 'updatedAt:desc' })
+    const extra = (extraData.items || []).filter(item => !trending.some(p => p.id === item.id))
+    hotProducts.value = [...trending, ...extra].slice(0, 8)
+  } catch {
+    // Fallback: map mock catalog sang ProductListItem format
+    hotProducts.value = products.slice(0, 8).map((p, i) => ({
+      id: p.id,
+      productCode: p.isrc || `PROD-${i}`,
+      title: p.title,
+      thumbnailUrl: null,
+      artistDisplayName: p.artist,
+      genre: p.category,
+      genres: [p.category],
+      durationSeconds: parseMockDuration(p.duration),
+      useCases: p.tags || [],
+      basePrice: p.basePrice,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }))
+  } finally {
+    hotLoading.value = false
+  }
+}
+
+// ── Artists carousel ──────────────────────────────────────────────────────────
+const PAGE_SIZE = 6
+const artistOffset = ref(0)
+let autoTimer = null
+
+const allArtists = computed(() => mockArtists)
+const totalArtists = computed(() => allArtists.value.length)
+
+const visibleArtists = computed(() => {
+  const arr = allArtists.value
+  if (arr.length <= PAGE_SIZE) return arr
+  const result = []
+  for (let i = 0; i < PAGE_SIZE; i++) {
+    result.push(arr[(artistOffset.value + i) % arr.length])
+  }
+  return result
+})
+
+function artistPrev() {
+  artistOffset.value = (artistOffset.value - 1 + totalArtists.value) % totalArtists.value
+  resetAutoTimer()
+}
+
+function artistNext() {
+  artistOffset.value = (artistOffset.value + 1) % totalArtists.value
+  resetAutoTimer()
+}
+
+function startAutoTimer() {
+  autoTimer = setInterval(() => {
+    artistOffset.value = (artistOffset.value + 1) % totalArtists.value
+  }, 2000)
+}
+
+function resetAutoTimer() {
+  if (autoTimer) clearInterval(autoTimer)
+  startAutoTimer()
+}
+
+onMounted(() => {
+  fetchHotProducts()
+  fetchFacetItems()
+  if (totalArtists.value > PAGE_SIZE) startAutoTimer()
+})
+
+onUnmounted(() => {
+  if (autoTimer) clearInterval(autoTimer)
 })
 
 const stats = [
@@ -90,11 +243,10 @@ const ctaChecks = [
   'Hợp đồng PDF kèm ID xác minh'
 ]
 
-function pickCat(id) { activeCat.value = id }
 function goMarket() {
   const q = search.value.trim()
-  if (q) router.push({ name: 'search', params: { q } })
-  else router.push({ name: 'search' })
+  if (q) goToMarket({ q })
+  else goToMarket({ q: '' })
 }
 </script>
 
@@ -203,7 +355,7 @@ function goMarket() {
     </div>
   </section>
 
-  <!-- CATEGORIES + GRID -->
+  <!-- CATEGORIES + HOT PRODUCTS GRID -->
   <section id="categories" class="section">
     <div class="container">
       <SectionHead
@@ -213,26 +365,54 @@ function goMarket() {
         description="Hơn 12.000 tác phẩm đã được xác minh, sẵn sàng giao dịch linh hoạt theo nhu cầu sử dụng."
       >
         <template #actions>
-          <button class="btn btn-ghost btn-sm">Bộ lọc nâng cao</button>
-          <button class="btn btn-soft btn-sm">Sắp xếp: Phổ biến</button>
+          <RouterLink to="/market" class="btn btn-ghost btn-sm">Xem tất cả →</RouterLink>
         </template>
       </SectionHead>
 
-      <div class="chips reveal">
-        <button v-for="c in categories" :key="c.id" :class="['chip', { 'is-active': activeCat === c.id }]" @click="pickCat(c.id)">
-          {{ c.label }}
-        </button>
+      <div class="chips reveal" style="margin-top:18px">
+        <button
+          v-for="g in genreOptions"
+          :key="g.id"
+          class="chip"
+          :class="{ 'is-active': selectedGenre === g.id }"
+          @click="changeGenre(g.id)"
+        >{{ g.label }}</button>
       </div>
 
-      <div class="grid">
-        <div v-for="(p, i) in filtered" :key="p.id" class="grid-item reveal" :style="{ transitionDelay: (i * 50) + 'ms' }">
-          <ProductCard :product="p" />
+      <template v-if="hotLoading">
+        <div class="hot-grid">
+          <div v-for="i in 4" :key="i" class="hot-skeleton reveal" />
         </div>
-      </div>
+        <div class="hot-grid" style="margin-top:18px">
+          <div v-for="i in 4" :key="i" class="hot-skeleton reveal" />
+        </div>
+      </template>
 
-      <div v-if="!filtered.length" class="empty reveal">
-        Không tìm thấy tác phẩm phù hợp. Thử thay đổi từ khoá hoặc thể loại.
-      </div>
+      <template v-else>
+        <div class="hot-grid">
+          <div
+            v-for="(p, i) in hotRow1"
+            :key="p.id"
+            class="reveal"
+            :style="{ transitionDelay: (i * 60) + 'ms' }"
+          >
+            <MarketProductCard :item="p" />
+          </div>
+        </div>
+        <div class="hot-grid" style="margin-top:18px">
+          <div
+            v-for="(p, i) in hotRow2"
+            :key="p.id"
+            class="reveal"
+            :style="{ transitionDelay: (i * 60 + 240) + 'ms' }"
+          >
+            <MarketProductCard :item="p" />
+          </div>
+        </div>
+        <div v-if="!hotProducts.length" class="empty reveal">
+          Chưa có dữ liệu sản phẩm. Hãy quay lại sau!
+        </div>
+      </template>
     </div>
   </section>
 
@@ -294,22 +474,48 @@ function goMarket() {
     </div>
   </section>
 
-  <!-- ARTISTS -->
+  <!-- ARTISTS CAROUSEL -->
   <section id="artists" class="section artists">
     <div class="container">
-      <SectionHead class="reveal" eyebrow="Nghệ sĩ tiêu biểu" title="Cộng đồng tác giả đồng hành">
-        <template #actions>
-          <a href="#" class="link-more">Xem tất cả →</a>
-        </template>
-      </SectionHead>
-      <div class="artist-grid">
-        <div v-for="(a, i) in artists" :key="a.id" class="artist-card reveal" :style="{ transitionDelay: (i * 60) + 'ms' }">
-          <div class="art-cover" :style="{ background: 'linear-gradient(135deg, hsl(' + (200 + i*18) + ', 75%, 60%), hsl(' + (170 + i*10) + ', 70%, 55%))' }">
-            <span class="initial">{{ a.name[0] }}</span>
+      <SectionHead class="reveal" eyebrow="Nghệ sĩ tiêu biểu" title="Cộng đồng tác giả đồng hành" />
+
+      <div class="artist-carousel">
+        <TransitionGroup name="artist-slide" tag="div" class="artist-grid">
+          <div
+            v-for="a in visibleArtists"
+            :key="a.id"
+            class="artist-card"
+          >
+            <div
+              class="art-cover"
+              :style="{ background: 'linear-gradient(135deg, hsl(' + ((a.id.charCodeAt(0) * 7 + 200) % 360) + ',72%,55%), hsl(' + ((a.id.charCodeAt(0) * 13 + 160) % 360) + ',65%,50%))' }"
+            >
+              <span class="initial">{{ a.name[0] }}</span>
+            </div>
+            <h4>{{ a.name }}</h4>
+            <p>{{ a.tag }}</p>
+            <span class="muted">{{ a.tracks }} tác phẩm</span>
           </div>
-          <h4>{{ a.name }}</h4>
-          <p>{{ a.tag }}</p>
-          <span class="muted">{{ a.tracks }} tác phẩm</span>
+        </TransitionGroup>
+
+        <!-- Prev / Next overlay buttons -->
+        <button class="artist-nav artist-nav--prev" aria-label="Trước" @click="artistPrev">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="artist-nav artist-nav--next" aria-label="Tiếp" @click="artistNext">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+
+        <!-- Dot indicators -->
+        <div class="carousel-dots">
+          <button
+            v-for="page in Math.ceil(totalArtists / PAGE_SIZE)"
+            :key="page"
+            class="carousel-dot"
+            :class="{ active: Math.floor(artistOffset / PAGE_SIZE) === page - 1 }"
+            :aria-label="`Trang ${page}`"
+            @click="() => { artistOffset = (page - 1) * PAGE_SIZE; resetAutoTimer() }"
+          />
         </div>
       </div>
     </div>
@@ -342,7 +548,7 @@ function goMarket() {
         <h2>Bắt đầu với gói thử nghiệm <span class="gradient-text">miễn phí</span></h2>
         <p>Tạo tài khoản, thêm tác phẩm đầu tiên vào giỏ và trải nghiệm quy trình ký hợp đồng số chỉ trong vài phút.</p>
         <div class="cta-actions">
-          <button class="btn btn-primary btn-lg">Tạo tài khoản miễn phí</button>
+          <RouterLink :to="{ name: 'register-role' }" class="btn btn-primary btn-lg">Tạo tài khoản miễn phí</RouterLink>
           <button class="btn btn-ghost btn-lg">Liên hệ Sales</button>
         </div>
       </div>
@@ -381,7 +587,7 @@ function goMarket() {
   letter-spacing: -0.02em;
   margin: 18px 0 18px;
   font-weight: 800;
-  text-wrap: balance;
+  overflow-wrap: break-word;
 }
 .keep-together {
   display: inline-block;
@@ -595,7 +801,7 @@ function goMarket() {
 /* ---------- Chips ---------- */
 .chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin: 0 0 28px;
   padding: 12px;
@@ -603,8 +809,11 @@ function goMarket() {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-xs);
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ---------- Grid ---------- */
@@ -725,13 +934,72 @@ function goMarket() {
 @media (max-width: 980px) { .uc-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 520px) { .uc-grid { grid-template-columns: 1fr; } }
 
-/* ---------- Artists ---------- */
+/* ---------- Hot Products Grid ---------- */
+.hot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+@media (max-width: 1024px) { .hot-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px)  { .hot-grid { grid-template-columns: 1fr; } }
+
+.hot-skeleton {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, var(--c-bg-soft) 25%, var(--c-border) 50%, var(--c-bg-soft) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  aspect-ratio: 3/2;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---------- Artists Carousel ---------- */
 .artists { background: linear-gradient(180deg, var(--c-bg-soft) 0%, var(--c-bg) 100%); }
+
+.artist-carousel {
+  position: relative;
+}
+
+/* Overlay nav buttons */
+.artist-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .2s, border-color .2s, box-shadow .2s, transform .2s;
+  box-shadow: var(--shadow-sm);
+  z-index: 4;
+}
+.artist-nav--prev { left: -20px; }
+.artist-nav--next { right: -20px; }
+.artist-nav:hover {
+  background: var(--c-blue-50);
+  border-color: var(--c-blue-300);
+  color: var(--c-blue-700);
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: var(--shadow-md);
+}
+
 .artist-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 18px;
+  position: relative;
 }
+@media (max-width: 980px) { .artist-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px) { .artist-grid { grid-template-columns: repeat(2, 1fr); } }
+
 .artist-card {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -755,8 +1023,46 @@ function goMarket() {
 .artist-card h4 { margin: 0; font-size: 14.5px; }
 .artist-card p { margin: 2px 0 6px; font-size: 12px; color: var(--c-text-soft); }
 .muted { font-size: 11.5px; color: var(--c-text-mute); }
-@media (max-width: 980px) { .artist-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 520px) { .artist-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Dot indicators */
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+}
+.carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: var(--c-border-strong);
+  cursor: pointer;
+  padding: 0;
+  transition: background .2s, transform .2s, width .25s;
+}
+.carousel-dot.active {
+  background: var(--grad-brand);
+  width: 22px;
+  border-radius: var(--radius-full);
+}
+
+/* TransitionGroup animation */
+.artist-slide-enter-active,
+.artist-slide-leave-active {
+  transition: opacity .3s, transform .3s;
+}
+.artist-slide-enter-from {
+  opacity: 0;
+  transform: translateX(20px);
+}
+.artist-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+.artist-slide-leave-active {
+  position: absolute;
+}
 
 /* ---------- FAQ ---------- */
 .faq-grid {

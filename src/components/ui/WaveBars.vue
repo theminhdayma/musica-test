@@ -19,10 +19,10 @@ const props = defineProps({
 })
 
 const sizeMap = {
-  xs: { h: 14, gap: 1, w: 2 },
-  sm: { h: 22, gap: 2, w: 2 },
-  md: { h: 36, gap: 2, w: 3 },
-  lg: { h: 56, gap: 2, w: 3 }
+  xs: { h: 14, gap: 1 },
+  sm: { h: 22, gap: 2 },
+  md: { h: 36, gap: 2 },
+  lg: { h: 56, gap: 2 }
 }
 
 const dim = computed(() => sizeMap[props.size] || sizeMap.sm)
@@ -54,18 +54,19 @@ function heightPx(v) {
       v-for="(v, i) in list"
       :key="i"
       :class="['wb-bar', { played: progress > 0 && (i / list.length) * 100 <= progress }]"
-      :style="{ height: heightPx(v) + 'px', width: dim.w + 'px', animationDelay: (i * 35) + 'ms' }"
+      :style="{ height: heightPx(v) + 'px', animationDelay: (i * 35) + 'ms' }"
     />
   </div>
 </template>
 
 <style scoped>
 .wb {
-  display: inline-flex;
+  display: flex;
   align-items: flex-end;
   width: 100%;
 }
 .wb-bar {
+  flex: 1;
   border-radius: 1.5px;
   min-height: 2px;
   transition: background .2s, height .2s;

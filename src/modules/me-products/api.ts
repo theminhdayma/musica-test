@@ -27,6 +27,29 @@ type SignedUploadUrlData = {
   fileKey: string
 }
 
+type ApiProduct = {
+  id: string
+  title: string
+  artistId?: string
+  authorName?: string | null
+  genres?: string[]
+  useCases?: string[]
+  duration?: number | null
+  status: 'PENDING' | 'HIDDEN' | 'PUBLISHED'
+  createdAt: string
+  updatedAt?: string
+  description?: string | null
+  thumbnailKey?: string | null
+  originalAudioKey?: string | null
+  sheetMusicPdfKey?: string | null
+  allowedPermissionIds?: string[]
+}
+
+type SignedUploadUrlData = {
+  uploadUrl: string
+  fileKey: string
+}
+
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const totalItems = items.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))

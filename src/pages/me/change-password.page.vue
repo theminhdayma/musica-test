@@ -4,6 +4,9 @@ import MeAccountLayout from '../../components/features/me/MeAccountLayout.vue'
 import HintIcon from '../../shared/ui/HintIcon.vue'
 import { changePasswordApi } from '../../modules/auth/auth.api'
 import { ApiError } from '../../shared/api/errors'
+import { useAuthStore } from '../../modules/auth/auth.store'
+
+const auth = useAuthStore()
 
 const oldPassword = ref('')
 const newPassword = ref('')
@@ -72,6 +75,8 @@ const canSubmit = computed(() =>
   && !submitting.value
 )
 
+const accountRoleLabel = computed(() => auth.me?.user?.roleName === 'BUYER' ? 'buyer' : 'nghệ sĩ')
+
 async function submit() {
   touched.value = { old: true, new: true, confirm: true }
   submitError.value = null
@@ -122,7 +127,7 @@ async function submit() {
         <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
           <div>
             <div class="cp-header-title">Đổi mật khẩu</div>
-            <div class="cp-header-sub">Cập nhật mật khẩu để bảo vệ tài khoản nghệ sĩ của bạn</div>
+            <div class="cp-header-sub">Cập nhật mật khẩu để bảo vệ tài khoản {{ accountRoleLabel }} của bạn</div>
           </div>
           <HintIcon
             placement="bottom"

@@ -11,12 +11,15 @@ import { consumePrefetchedProduct } from '../modules/catalog/productPrefetch'
 import { ApiError } from '../shared/api/errors'
 import ErrorState from '../shared/ui/states/ErrorState.vue'
 import { useCartStore } from '../stores/cart'
+import { useAuthStore } from '../modules/auth/auth.store'
+import { hasClientPermission } from '../modules/auth/auth.capabilities'
 import ProductGrid from '../pages/market/components/ProductGrid.vue'
 import ConfigOptionButton from '../components/product/ConfigOptionButton.vue'
 import WaveBars from '../components/ui/WaveBars.vue'
 import CheckList from '../components/ui/CheckList.vue'
 import ProductDescriptionPdfWebView from '../components/documents/ProductDescriptionPdfWebView.vue'
 import { getApiBaseUrl } from '../shared/api/http'
+import ConfirmModal from '../shared/ui/modals/ConfirmModal.vue'
 
 const defaultDeliverables = [
   'Bản thu âm chất lượng cao (WAV 24-bit/48kHz)',
@@ -28,6 +31,7 @@ const defaultDeliverables = [
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
+const auth = useAuthStore()
 
 const productId = computed(() => String(route.params.id || ''))
 const product = ref(null)
@@ -71,6 +75,12 @@ const useCases = computed(() => (
 const allowedPermissions = computed(() => (
   Array.isArray(product.value?.allowedPermissions) ? product.value.allowedPermissions : []
 ))
+const buyerCanManageOrder = computed(() => hasClientPermission({
+  isAuthenticated: auth.isAuthenticated,
+  roles: auth.roles,
+  currentUser: auth.currentUser,
+  me: auth.me,
+}, 'manage_order'))
 const pricingPlatform = ref(null)
 const pricingSchema = ref([])
 const pricingTableRows = ref([])
@@ -262,9 +272,11 @@ function togglePlay() {
   if (!audioElement.value) {
     audioElement.value = new Audio(url)
     audioElement.value.addEventListener('timeupdate', () => {
-      const duration = audioElement.value.duration
+      const audio = audioElement.value
+      if (!audio) return
+      const duration = audio.duration
       if (duration && !isNaN(duration) && isFinite(duration)) {
-        progress.value = (audioElement.value.currentTime / duration) * 100
+        progress.value = (audio.currentTime / duration) * 100
       }
     })
     audioElement.value.addEventListener('ended', () => {
@@ -313,6 +325,11 @@ function resetPricingState() {
   pricingLoading.value = false
 }
 
+function toFiniteNumber(value) {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numericValue) ? numericValue : null
+}
+
 async function loadPricingData(seq) {
   pricingLoading.value = true
   pricingMessage.value = ''
@@ -337,7 +354,20 @@ async function loadPricingData(seq) {
       platformName: pricingRes.data.platformName,
     }
     pricingSchema.value = Array.isArray(pricingRes.data.schema) ? pricingRes.data.schema : []
-    pricingTableRows.value = Array.isArray(pricingRes.data.items) ? pricingRes.data.items : []
+    const normalizedItems = (Array.isArray(pricingRes.data.items) ? pricingRes.data.items : []).map((row) => {
+      const sellingPrice = toFiniteNumber(row?.sellingPrice)
+      const referencePrice =
+        row?.referencePrice === null || row?.referencePrice === undefined
+          ? null
+          : toFiniteNumber(row?.referencePrice)
+
+      return {
+        ...row,
+        sellingPrice: sellingPrice ?? null,
+        referencePrice: referencePrice ?? null,
+      }
+    })
+    pricingTableRows.value = normalizedItems
     pricingWarnings.value = Array.isArray(pricingRes.data.warnings) ? pricingRes.data.warnings : []
   } catch (err) {
     if (seq !== loadSeq) return
@@ -412,22 +442,63 @@ watch(selectedPricingValues, () => {
 const related = ref([])
 
 const addedFlash = ref(false)
-function addToCart() {
-  if (!product.value || !calcData.value) return
-  cart.add({
+const duplicateCartModalOpen = ref(false)
+function getSelectedUsageRights() {
+  return allowedPermissions.value
+    .map((item) => String(item?.id || '').trim())
+    .filter((value) => value.length > 0)
+}
+
+function getSelectedPricingAttributes() {
+  return Object.fromEntries(
+    pricingFields.value.map((field) => [
+      field.key,
+      String(selectedPricingValues.value?.[field.key] ?? ''),
+    ]),
+  )
+}
+
+function ensureManageOrderPermission() {
+  auth.hydrate()
+
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return false
+  }
+
+  if (!buyerCanManageOrder.value) {
+    alert('Tài khoản Buyer hiện không có quyền thao tác đơn hàng.')
+    return false
+  }
+
+  return true
+}
+
+async function addToCart() {
+  if (!product.value || !calcData.value) return false
+  if (!ensureManageOrderPermission()) return false
+  const result = await cart.add({
     productId: product.value.id,
     title: product.value.title,
     artist: productAuthorName.value,
     cover: product.value.thumbnailUrl,
     price: calcData.value.subtotal,
-    configuration: calcData.value.summary
+    configuration: calcData.value.summary,
+    selectedUsageRights: getSelectedUsageRights(),
+    pricingAttributes: getSelectedPricingAttributes(),
   })
+  if (!result?.ok) {
+    duplicateCartModalOpen.value = true
+    return false
+  }
   addedFlash.value = true
   setTimeout(() => addedFlash.value = false, 1400)
+  return true
 }
 
-function buyNow() {
-  addToCart()
+async function buyNow() {
+  const added = await addToCart()
+  if (!added) return
   setTimeout(() => router.push('/cart'), 200)
 }
 
@@ -662,6 +733,16 @@ function formatVND(amount) {
         </aside>
       </div>
     </section>
+
+    <ConfirmModal
+      :open="duplicateCartModalOpen"
+      title="Sản phẩm đã tồn tại"
+      message="Sản phẩm số với cấu hình này đã tồn tại trong giỏ hàng."
+      confirm-text="Xem giỏ hàng"
+      cancel-text="Đóng"
+      @close="duplicateCartModalOpen = false"
+      @confirm="() => { duplicateCartModalOpen = false; router.push('/cart') }"
+    />
 
     <section class="section-tight product-details">
       <div class="container">

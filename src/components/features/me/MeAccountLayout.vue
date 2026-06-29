@@ -1,23 +1,43 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAuthStore } from '../../../modules/auth/auth.store'
+import { canAccessArtistArea, canAccessBuyerArea } from '../../../modules/auth/auth.capabilities'
 
-type MeTabKey = 'dashboard' | 'profile' | 'products' | 'changePassword'
+type MeTabKey = 'dashboard' | 'profile' | 'products' | 'certificates' | 'changePassword'
 
 defineProps<{
   active: MeTabKey
 }>()
 
-const tabs: Array<{
+const auth = useAuthStore()
+auth.hydrate()
+
+const tabs = computed<Array<{
   key: MeTabKey
   label: string
   to: string
   icon: string
-}> = [
-  { key: 'dashboard', label: 'Dashboard', to: '/me/dashboard', icon: 'pi pi-chart-bar' },
-  { key: 'profile', label: 'Trang cá nhân', to: '/me/profile', icon: 'pi pi-user' },
-  { key: 'products', label: 'Quản lý sản phẩm', to: '/me/products', icon: 'pi pi-headphones' },
-  { key: 'changePassword', label: 'Đổi mật khẩu', to: '/me/changePassword', icon: 'pi pi-lock' },
-]
+}>>(() => {
+  if (canAccessArtistArea(auth.roles)) {
+    return [
+      { key: 'dashboard', label: 'Dashboard', to: '/me/dashboard', icon: 'pi pi-chart-bar' },
+      { key: 'profile', label: 'Trang cá nhân', to: '/me/profile', icon: 'pi pi-user' },
+      { key: 'products', label: 'Quản lý sản phẩm', to: '/me/products', icon: 'pi pi-music' },
+      { key: 'changePassword', label: 'Đổi mật khẩu', to: '/me/changePassword', icon: 'pi pi-lock' },
+    ]
+  }
+
+  if (canAccessBuyerArea(auth.roles)) {
+    return [
+      { key: 'profile', label: 'Trang cá nhân', to: '/me/profile', icon: 'pi pi-user' },
+      { key: 'certificates', label: 'Chứng nhận', to: '/me/certificates', icon: 'pi pi-check-circle' },
+      { key: 'changePassword', label: 'Đổi mật khẩu', to: '/me/changePassword', icon: 'pi pi-lock' },
+    ]
+  }
+
+  return []
+})
 </script>
 
 <template>
